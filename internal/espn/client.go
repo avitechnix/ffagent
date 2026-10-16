@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/avitechnix/lexx587-experimental/ffagent/internal/secrets"
+	"github.com/avitechnix/ffagent/internal/secrets"
 )
 
 const (

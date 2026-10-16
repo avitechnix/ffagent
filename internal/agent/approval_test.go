@@ -9,10 +9,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/avitechnix/lexx587-experimental/ffagent/internal/approval"
-	"github.com/avitechnix/lexx587-experimental/ffagent/internal/espn"
-	"github.com/avitechnix/lexx587-experimental/ffagent/internal/mail"
-	"github.com/avitechnix/lexx587-experimental/ffagent/internal/news"
+	"github.com/avitechnix/ffagent/internal/approval"
+	"github.com/avitechnix/ffagent/internal/espn"
+	"github.com/avitechnix/ffagent/internal/mail"
+	"github.com/avitechnix/ffagent/internal/news"
 )
 
 type fakeMail struct {

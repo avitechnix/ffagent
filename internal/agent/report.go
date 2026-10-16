@@ -8,8 +8,8 @@ import (
 	"strings"
 	"text/tabwriter"
 
-	"github.com/avitechnix/lexx587-experimental/ffagent/internal/analysis"
-	"github.com/avitechnix/lexx587-experimental/ffagent/internal/espn"
+	"github.com/avitechnix/ffagent/internal/analysis"
+	"github.com/avitechnix/ffagent/internal/espn"
 )
 
 // PrintHeader prints the league and team summary.

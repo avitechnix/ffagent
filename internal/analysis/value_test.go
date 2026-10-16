@@ -4,7 +4,7 @@ import (
 	"math"
 	"testing"
 
-	"github.com/avitechnix/lexx587-experimental/ffagent/internal/espn"
+	"github.com/avitechnix/ffagent/internal/espn"
 )
 
 const season = 2026

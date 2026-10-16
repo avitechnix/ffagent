@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/avitechnix/lexx587-experimental/ffagent/internal/approval"
-	"github.com/avitechnix/lexx587-experimental/ffagent/internal/espn"
+	"github.com/avitechnix/ffagent/internal/approval"
+	"github.com/avitechnix/ffagent/internal/espn"
 )
 
 // ExecuteApproved runs approved items, in order, after re-checking each one

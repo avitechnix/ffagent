@@ -12,10 +12,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/avitechnix/lexx587-experimental/ffagent/internal/analysis"
-	"github.com/avitechnix/lexx587-experimental/ffagent/internal/approval"
-	"github.com/avitechnix/lexx587-experimental/ffagent/internal/espn"
-	"github.com/avitechnix/lexx587-experimental/ffagent/internal/news"
+	"github.com/avitechnix/ffagent/internal/analysis"
+	"github.com/avitechnix/ffagent/internal/approval"
+	"github.com/avitechnix/ffagent/internal/espn"
+	"github.com/avitechnix/ffagent/internal/news"
 )
 
 // NewsSource is the subset of the news client the watcher uses.

@@ -6,9 +6,9 @@ import (
 	"io"
 	"strings"
 
-	"github.com/avitechnix/lexx587-experimental/ffagent/internal/espn"
-	"github.com/avitechnix/lexx587-experimental/ffagent/internal/lineup"
-	"github.com/avitechnix/lexx587-experimental/ffagent/internal/secrets"
+	"github.com/avitechnix/ffagent/internal/espn"
+	"github.com/avitechnix/ffagent/internal/lineup"
+	"github.com/avitechnix/ffagent/internal/secrets"
 )
 
 // Scope selects which parts of a plan to execute.

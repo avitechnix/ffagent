@@ -1,4 +1,4 @@
-module github.com/avitechnix/lexx587-experimental/ffagent
+module github.com/avitechnix/ffagent
 
 go 1.26.9
 

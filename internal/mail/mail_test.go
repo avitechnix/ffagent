@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/avitechnix/lexx587-experimental/ffagent/internal/secrets"
+	"github.com/avitechnix/ffagent/internal/secrets"
 )
 
 func listen(t *testing.T, serve func(c net.Conn)) int {

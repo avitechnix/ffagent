@@ -10,7 +10,7 @@ import (
 	"time"
 	_ "time/tzdata" // time zones work even on minimal servers
 
-	"github.com/avitechnix/lexx587-experimental/ffagent/internal/secrets"
+	"github.com/avitechnix/ffagent/internal/secrets"
 )
 
 // Config controls how the agent connects to ESPN and how aggressive it is.

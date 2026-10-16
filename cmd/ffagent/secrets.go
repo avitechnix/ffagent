@@ -7,9 +7,9 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/avitechnix/lexx587-experimental/ffagent/internal/config"
-	"github.com/avitechnix/lexx587-experimental/ffagent/internal/espn"
-	"github.com/avitechnix/lexx587-experimental/ffagent/internal/secrets"
+	"github.com/avitechnix/ffagent/internal/config"
+	"github.com/avitechnix/ffagent/internal/espn"
+	"github.com/avitechnix/ffagent/internal/secrets"
 )
 
 var swidPattern = regexp.MustCompile(`^\{[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}\}$`)

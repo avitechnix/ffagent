@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/avitechnix/lexx587-experimental/ffagent/internal/espn"
+	"github.com/avitechnix/ffagent/internal/espn"
 )
 
 // TradeIdea is a trade that helps us and plausibly helps (or barely hurts)

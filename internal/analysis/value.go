@@ -8,7 +8,7 @@ import (
 	"math"
 	"sort"
 
-	"github.com/avitechnix/lexx587-experimental/ffagent/internal/espn"
+	"github.com/avitechnix/ffagent/internal/espn"
 )
 
 // Valuation is the agent's view of one player.

@@ -15,7 +15,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/avitechnix/lexx587-experimental/ffagent/internal/espn"
+	"github.com/avitechnix/ffagent/internal/espn"
 )
 
 // Status is where an item is in its life.

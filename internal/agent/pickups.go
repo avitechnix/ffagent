@@ -5,7 +5,7 @@ import (
 	"math"
 	"strings"
 
-	"github.com/avitechnix/lexx587-experimental/ffagent/internal/espn"
+	"github.com/avitechnix/ffagent/internal/espn"
 )
 
 // planPickups finds the free-agent adds and waiver claims that most improve

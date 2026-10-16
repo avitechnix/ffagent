@@ -1,9 +1,9 @@
 package agent
 
 import (
-	"github.com/avitechnix/lexx587-experimental/ffagent/internal/analysis"
-	"github.com/avitechnix/lexx587-experimental/ffagent/internal/espn"
-	"github.com/avitechnix/lexx587-experimental/ffagent/internal/lineup"
+	"github.com/avitechnix/ffagent/internal/analysis"
+	"github.com/avitechnix/ffagent/internal/espn"
+	"github.com/avitechnix/ffagent/internal/lineup"
 )
 
 // MatchupReport summarizes this week's head-to-head outlook.

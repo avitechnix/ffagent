@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/avitechnix/lexx587-experimental/ffagent/internal/secrets"
+	"github.com/avitechnix/ffagent/internal/secrets"
 )
 
 // Transaction types accepted by the ESPN write API.

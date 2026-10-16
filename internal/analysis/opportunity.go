@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/avitechnix/lexx587-experimental/ffagent/internal/espn"
+	"github.com/avitechnix/ffagent/internal/espn"
 )
 
 // Injury is the injury news the valuation model needs about one player.

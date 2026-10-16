@@ -51,8 +51,8 @@ On any Linux server with systemd 250+ (Ubuntu 22.04+, Debian 12+, Fedora, etc.),
 example a small VPS or a Raspberry Pi:
 
 ```sh
-git clone -b claude/espn-fantasy-football-agent-3nhs6i https://github.com/avitechnix/lexx587-experimental
-cd lexx587-experimental/ffagent
+git clone https://github.com/avitechnix/ffagent
+cd ffagent
 sudo ./deploy/install.sh
 ```
 
@@ -105,7 +105,7 @@ pinned, patched toolchain (`go1.27.2`) automatically. Don't override that with
 
 ### Security updates
 
-- `.github/workflows/ffagent-security.yml` runs the tests and
+- `.github/workflows/security.yml` runs the tests and
   [govulncheck](https://go.dev/doc/security/vuln/) on every change and weekly. It fails
   if any known vulnerability is reachable from this code.
 - Dependabot opens PRs for Go module and GitHub Actions updates.

@@ -10,11 +10,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/avitechnix/lexx587-experimental/ffagent/internal/analysis"
-	"github.com/avitechnix/lexx587-experimental/ffagent/internal/config"
-	"github.com/avitechnix/lexx587-experimental/ffagent/internal/espn"
-	"github.com/avitechnix/lexx587-experimental/ffagent/internal/lineup"
-	"github.com/avitechnix/lexx587-experimental/ffagent/internal/secrets"
+	"github.com/avitechnix/ffagent/internal/analysis"
+	"github.com/avitechnix/ffagent/internal/config"
+	"github.com/avitechnix/ffagent/internal/espn"
+	"github.com/avitechnix/ffagent/internal/lineup"
+	"github.com/avitechnix/ffagent/internal/secrets"
 )
 
 // ESPN is the subset of the ESPN client the agent uses.

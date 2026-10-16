@@ -5,7 +5,7 @@ import (
 	"math"
 	"sort"
 
-	"github.com/avitechnix/lexx587-experimental/ffagent/internal/espn"
+	"github.com/avitechnix/ffagent/internal/espn"
 )
 
 // Scorer returns how much a player is worth in a starting slot.

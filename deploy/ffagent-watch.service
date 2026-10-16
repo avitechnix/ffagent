@@ -1,6 +1,6 @@
 [Unit]
 Description=ffagent: ESPN fantasy football agent (injury watch)
-Documentation=https://github.com/avitechnix/lexx587-experimental/tree/main/ffagent
+Documentation=https://github.com/avitechnix/ffagent
 Wants=network-online.target
 After=network-online.target
 StartLimitIntervalSec=0

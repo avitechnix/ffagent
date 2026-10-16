@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/avitechnix/lexx587-experimental/ffagent/internal/espn"
+	"github.com/avitechnix/ffagent/internal/espn"
 )
 
 const DefaultBase = "https://site.api.espn.com/apis/site/v2/sports/football/nfl"

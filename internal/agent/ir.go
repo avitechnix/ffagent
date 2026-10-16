@@ -5,7 +5,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/avitechnix/lexx587-experimental/ffagent/internal/espn"
+	"github.com/avitechnix/ffagent/internal/espn"
 )
 
 // planIR keeps the IR slots legal and full:

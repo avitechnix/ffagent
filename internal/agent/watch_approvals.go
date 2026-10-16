@@ -6,10 +6,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/avitechnix/lexx587-experimental/ffagent/internal/approval"
-	"github.com/avitechnix/lexx587-experimental/ffagent/internal/espn"
-	"github.com/avitechnix/lexx587-experimental/ffagent/internal/lineup"
-	"github.com/avitechnix/lexx587-experimental/ffagent/internal/mail"
+	"github.com/avitechnix/ffagent/internal/approval"
+	"github.com/avitechnix/ffagent/internal/espn"
+	"github.com/avitechnix/ffagent/internal/lineup"
+	"github.com/avitechnix/ffagent/internal/mail"
 )
 
 // Mailer sends email and reads replies (implemented by *mail.Account).

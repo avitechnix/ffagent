@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Installs ffagent as a hardened systemd service on a Linux server.
 #
-#   git clone -b claude/espn-fantasy-football-agent-3nhs6i https://github.com/avitechnix/lexx587-experimental
-#   cd lexx587-experimental/ffagent && sudo ./deploy/install.sh
+#   git clone https://github.com/avitechnix/ffagent
+#   cd ffagent && sudo ./deploy/install.sh
 #
 # Re-running it updates the binary and unit and keeps your config and vault.
 # Optional environment: LEAGUE_ID, TEAM_ID, AGENT_EMAIL, NOTIFY_EMAIL,

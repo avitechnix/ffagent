@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/avitechnix/lexx587-experimental/ffagent/internal/config"
-	"github.com/avitechnix/lexx587-experimental/ffagent/internal/espn"
-	"github.com/avitechnix/lexx587-experimental/ffagent/internal/secrets"
+	"github.com/avitechnix/ffagent/internal/config"
+	"github.com/avitechnix/ffagent/internal/espn"
+	"github.com/avitechnix/ffagent/internal/secrets"
 )
 
 const season, week = 2026, 6

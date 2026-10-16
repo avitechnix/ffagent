@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/avitechnix/lexx587-experimental/ffagent/internal/approval"
+	"github.com/avitechnix/ffagent/internal/approval"
 )
 
 const replyHelp = `HOW TO REPLY (just reply to this email)
