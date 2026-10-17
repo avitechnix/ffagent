@@ -25,6 +25,7 @@ import (
 	"github.com/avitechnix/ffagent/internal/mail"
 	"github.com/avitechnix/ffagent/internal/news"
 	"github.com/avitechnix/ffagent/internal/secrets"
+	"github.com/avitechnix/ffagent/internal/web"
 	"golang.org/x/term"
 )
 
@@ -161,6 +162,16 @@ func main() {
 			mode = "approval_mode=auto: moves are made without asking"
 		}
 		fmt.Fprintf(out, "Watching injury news every %s (%s). Ctrl-C to stop.\n", interval, mode)
+		if cfg.Web.Enabled {
+			app := &web.Server{Backend: w, Allowed: cfg.Web.AllowedLogins}
+			go func() {
+				if err := app.ListenAndServe(ctx, cfg.Web.Listen); err != nil {
+					fmt.Fprintln(os.Stderr, "phone app server stopped:", err)
+				}
+			}()
+			fmt.Fprintf(out, "Phone app listening on %s for %s (publish it with `tailscale serve`).\n",
+				cfg.Web.Listen, strings.Join(cfg.Web.AllowedLogins, ", "))
+		}
 		if err := w.Run(ctx, interval); err != nil {
 			fatal(err)
 		}

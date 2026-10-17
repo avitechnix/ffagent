@@ -29,6 +29,12 @@
     "time_zone": "America/New_York"
   },
 
+  "web": {
+    "enabled": false,
+    "listen": "127.0.0.1:8787",
+    "allowed_logins": ["you@example.com"]
+  },
+
   "news_fresh_hours": 48,
   "keep_new_pickups_days": 7,
   "max_acquisitions_per_day": 3,

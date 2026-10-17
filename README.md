@@ -92,6 +92,52 @@ sudo ./deploy/uninstall.sh
 Settings are in `/etc/ffagent/config.json`. Restart after editing:
 `sudo systemctl restart ffagent-watch`.
 
+## iPhone app
+
+A small web app you add to your Home Screen. It opens full-screen like a native app and
+has four tabs:
+
+- **Moves:** pending proposals with their rationale and **Approve** / **Decline** buttons.
+- **Matchup:** win probability and the recommended lineup.
+- **Roster:** projections vs. actuals, injuries, "next man up" notes and rest-of-season
+  value.
+- **History:** what was approved, declined and done.
+
+Moves approved in the app go through the same fresh re-check as email approvals, and you
+still get the results email as a record. No App Store or Mac is needed.
+
+**Privacy.** The app is reachable only over **Tailscale**, a free private network
+between your own devices:
+
+- The agent listens on `127.0.0.1` only. The config refuses any other address.
+- `tailscale serve` publishes it to your tailnet with a real HTTPS certificate.
+- Tailscale tells the agent which logged-in person each request comes from, and the
+  agent refuses everyone except the login(s) in `web.allowed_logins`.
+- Approve/decline requests also require an anti-forgery header and a same-origin check.
+- Pages use a strict Content Security Policy.
+
+**Setup:**
+
+1. **On the server:** install Tailscale and connect it.
+   ```sh
+   curl -fsSL https://tailscale.com/install.sh | sh
+   sudo tailscale up            # open the link it prints and sign in
+   ```
+2. **Still on the server:** turn on the app.
+   ```sh
+   cd ~/ffagent && sudo ./deploy/setup-phone.sh
+   ```
+   It asks for your Tailscale login and prints the app's address,
+   `https://<server>.<tailnet>.ts.net`. If Tailscale asks you to enable HTTPS
+   certificates, follow its link, then run the script again.
+3. **On the iPhone:** install **Tailscale** from the App Store and sign in with the same
+   account.
+4. **In Safari on the iPhone:** open the address from step 2, tap **Share → Add to Home
+   Screen**.
+
+The app works whenever Tailscale is connected on your phone. To turn it off:
+`sudo tailscale serve --https=443 off`.
+
 ## Setup (manual / development)
 
 ```sh
@@ -339,6 +385,7 @@ internal/agent      IR, pickups, matchup strategy, trades, execution, reports
 internal/config     JSON + env configuration (rejects plaintext credentials)
 internal/news       ESPN injury report and headline feeds
 internal/approval  approval queue, reply parsing, decision history
+internal/web       phone web app: localhost HTTP server, Tailscale identity check, static UI
 internal/mail      SMTP sending and minimal IMAP reply reading (TLS only)
 internal/secrets    encrypted vault, passphrase sources, redacting Secret type
 ```

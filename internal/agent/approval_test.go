@@ -261,3 +261,51 @@ func TestFailedProposalEmailIsRetried(t *testing.T) {
 		t.Errorf("retry: sent %d emails, %d transactions", len(fm.sent), len(f.submitted))
 	}
 }
+
+func TestApproveFromPhoneApp(t *testing.T) {
+	w, f, fm, _, _, backup := approvalWatcher(t)
+	ctx := context.Background()
+	if err := w.Tick(ctx); err != nil {
+		t.Fatal(err)
+	}
+	snap := w.Snapshot()
+	if snap.Status.Mode != "approve" || !snap.Status.Ready || len(snap.Pending) != 2 || len(snap.Roster) == 0 || len(snap.Lineup) == 0 {
+		t.Fatalf("snapshot: %+v", snap.Status)
+	}
+	add := snap.Pending[0]
+	if add.Kind != string(ActAdd) || !strings.Contains(add.Reason, "next man up") || len(snap.Pending[1].Needs) != 1 {
+		t.Errorf("pending items: %+v", snap.Pending)
+	}
+	if snap.Status.WinProb <= 0 || snap.Status.Opponent == "" {
+		t.Errorf("matchup missing: %+v", snap.Status)
+	}
+
+	// Approve in the app: nothing runs until the watcher's next pass.
+	if _, err := w.Decide(add.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	if len(f.submitted) != 0 {
+		t.Fatal("ran without the re-check pass")
+	}
+	if _, err := w.Decide(add.ID, true); err == nil {
+		t.Error("deciding twice should fail")
+	}
+	if err := w.TickApprovals(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if countAdds(f, backup.ID) != 1 {
+		t.Fatal("approved move didn't run")
+	}
+	if res := fm.sent[len(fm.sent)-1]; !strings.Contains(res.Body, "DONE") {
+		t.Errorf("result email still expected as a record:\n%s", res.Body)
+	}
+	snap = w.Snapshot()
+	if len(snap.History) != 1 || snap.History[0].Status != "executed" || snap.History[0].Via != "app" {
+		t.Errorf("history: %+v", snap.History)
+	}
+
+	w.Apply = false
+	if _, err := w.Decide(snap.Pending[0].ID, true); err == nil {
+		t.Error("decisions must be refused outside approve mode")
+	}
+}

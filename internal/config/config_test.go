@@ -50,3 +50,22 @@ func TestRejectsNestedEmailPassword(t *testing.T) {
 		t.Fatalf("nested password accepted: %v", err)
 	}
 }
+
+func TestWebAppOnlyListensOnLocalhost(t *testing.T) {
+	t.Setenv("ESPN_LEAGUE_ID", "1")
+	write := func(web string) string {
+		p := filepath.Join(t.TempDir(), "c.json")
+		os.WriteFile(p, []byte(`{"league_id": 1, "web": `+web+`}`), 0o600)
+		return p
+	}
+	if _, err := Load(write(`{"enabled": true, "listen": "0.0.0.0:8787", "allowed_logins": ["me@x.com"]}`)); err == nil {
+		t.Error("public listen address accepted")
+	}
+	if _, err := Load(write(`{"enabled": true, "listen": "127.0.0.1:8787"}`)); err == nil {
+		t.Error("enabled without allowed_logins accepted")
+	}
+	c, err := Load(write(`{"enabled": true, "listen": "127.0.0.1:8787", "allowed_logins": [" Me@X.com "]}`))
+	if err != nil || c.Web.AllowedLogins[0] != "me@x.com" {
+		t.Errorf("valid web config: %v %+v", err, c.Web)
+	}
+}

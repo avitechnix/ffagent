@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/avitechnix/ffagent/internal/analysis"
@@ -68,6 +69,30 @@ type Watcher struct {
 	lastFull  time.Time
 	lastNews  time.Time
 	perRun    int
+
+	// mu guards everything above against the phone app's web handlers.
+	mu       sync.Mutex
+	latest   *Plan     // most recent plan, for the app's roster and matchup views
+	latestAt time.Time // when it was made
+	lastTick time.Time // last completed news check
+	wake     chan struct{}
+}
+
+// poke asks the run loop to process approvals now instead of within a minute.
+func (w *Watcher) poke() {
+	if w.wake == nil {
+		return
+	}
+	select {
+	case w.wake <- struct{}{}:
+	default:
+	}
+}
+
+func (w *Watcher) remember(p *Plan) {
+	if p != nil {
+		w.latest, w.latestAt = p, w.Agent.Now()
+	}
 }
 
 // emailApprovals reports whether moves wait for an emailed OK.
@@ -96,6 +121,11 @@ func (w *Watcher) Run(ctx context.Context, every time.Duration) error {
 			fmt.Fprintf(w.Out, "%s  error: %v\n", stamp(w.Agent.Now()), err)
 		}
 	}
+	w.mu.Lock()
+	if w.wake == nil {
+		w.wake = make(chan struct{}, 1)
+	}
+	w.mu.Unlock()
 	for {
 		if w.Apply && w.emailApprovals() {
 			report(w.TickApprovals(ctx))
@@ -108,6 +138,7 @@ func (w *Watcher) Run(ctx context.Context, every time.Duration) error {
 		case <-ctx.Done():
 			return nil
 		case <-time.After(time.Minute):
+		case <-w.wake: // a decision came in from the phone app
 		}
 	}
 }
@@ -115,6 +146,9 @@ func (w *Watcher) Run(ctx context.Context, every time.Duration) error {
 // Tick checks the news once and, if anything relevant changed (or a full
 // re-plan is due), plans and executes roster moves and the lineup.
 func (w *Watcher) Tick(ctx context.Context) error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	defer func() { w.lastTick = w.Agent.Now() }()
 	if err := w.ensureLoaded(); err != nil {
 		return err
 	}
@@ -177,6 +211,7 @@ func (w *Watcher) act(ctx context.Context, now time.Time, fresh []news.Article) 
 	if err != nil {
 		return err
 	}
+	w.remember(p)
 	w.printNews(p, fresh, now)
 
 	if a.Cfg.MaxAcquisitionsPerRun == 0 && used > 0 {
