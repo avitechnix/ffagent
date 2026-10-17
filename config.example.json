@@ -35,6 +35,12 @@
     "allowed_logins": ["you@example.com"]
   },
 
+  "ask": {
+    "enabled": false,
+    "model": "claude-opus-5-5",
+    "max_per_day": 40
+  },
+
   "news_fresh_hours": 48,
   "keep_new_pickups_days": 7,
   "max_acquisitions_per_day": 3,

@@ -9,6 +9,7 @@ import (
 	"embed"
 	"encoding/json"
 	"errors"
+	"io"
 	"io/fs"
 	"net/http"
 	"net/url"
@@ -17,6 +18,7 @@ import (
 	"time"
 
 	"github.com/avitechnix/ffagent/internal/agent"
+	"github.com/avitechnix/ffagent/internal/approval"
 )
 
 //go:embed static
@@ -26,6 +28,7 @@ var static embed.FS
 type Backend interface {
 	Snapshot() agent.Snapshot
 	Decide(id int, approve bool) (agent.AppItem, error)
+	Ask(ctx context.Context, id int, question string) (approval.QA, error)
 }
 
 // Server is the phone app's HTTP server.
@@ -49,6 +52,7 @@ func (s *Server) Handler() http.Handler {
 	files, _ := fs.Sub(static, "static")
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/snapshot", s.snapshot)
+	mux.HandleFunc("POST /api/moves/{id}/ask", s.ask)
 	mux.HandleFunc("POST /api/moves/{id}/{decision}", s.decide)
 	mux.Handle("GET /", http.FileServerFS(files))
 	return s.secure(mux)
@@ -133,6 +137,27 @@ func (s *Server) decide(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, it)
 }
 
+func (s *Server) ask(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.Atoi(r.PathValue("id"))
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "bad move id"})
+		return
+	}
+	var body struct {
+		Question string `json:"question"`
+	}
+	if err := json.NewDecoder(io.LimitReader(r.Body, 8<<10)).Decode(&body); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "send {\"question\": \"...\"}"})
+		return
+	}
+	qa, err := s.Backend.Ask(r.Context(), id, body.Question)
+	if err != nil {
+		writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, qa)
+}
+
 func writeJSON(w http.ResponseWriter, code int, v any) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(code)
@@ -146,7 +171,7 @@ func (s *Server) ListenAndServe(ctx context.Context, addr string) error {
 		Handler:           s.Handler(),
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       30 * time.Second,
-		WriteTimeout:      30 * time.Second,
+		WriteTimeout:      150 * time.Second, // answering a question can take a while
 		IdleTimeout:       120 * time.Second,
 		MaxHeaderBytes:    64 << 10,
 	}

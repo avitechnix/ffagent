@@ -61,7 +61,33 @@ type Batch struct {
 	Items     []int     `json:"items"`
 	MessageID string    `json:"message_id"`
 	Subject   string    `json:"subject"`
+	Thread    []QA      `json:"thread,omitempty"` // follow-up questions and answers
 }
+
+// QA is one follow-up question about a batch and its answer.
+type QA struct {
+	Item     int       `json:"item,omitempty"` // item number the question was about; 0 = the whole batch
+	Question string    `json:"question"`
+	Answer   string    `json:"answer"`
+	Via      string    `json:"via"` // app, email
+	At       time.Time `json:"at"`
+}
+
+// QuestionsSince counts follow-up questions asked since t (for the daily cap).
+func (s *Store) QuestionsSince(t time.Time) int {
+	n := 0
+	for _, b := range s.Batches {
+		for _, qa := range b.Thread {
+			if qa.At.After(t) {
+				n++
+			}
+		}
+	}
+	return n
+}
+
+// BatchOf returns the batch an item belongs to.
+func (s *Store) BatchOf(it *Item) *Batch { return s.Batch(it.Batch) }
 
 // Store is the persisted queue.
 type Store struct {
@@ -342,13 +368,13 @@ var (
 //	yes 1,2  no 4        decline all              #2 no
 func ParseReply(text string) Decision {
 	d := Decision{Approve: map[int]bool{}, Decline: map[int]bool{}}
+	// Lines that ask a question are never decisions: "should I decline 2?"
+	// must not decline #2.
 	var own []string
-	for _, line := range strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n") {
-		t := strings.TrimSpace(line)
-		if strings.HasPrefix(t, ">") || quoteStartRe.MatchString(t) || t == "--" {
-			break
+	for _, line := range strings.Split(strings.ToLower(OwnText(text)), "\n") {
+		if !strings.Contains(line, "?") {
+			own = append(own, line)
 		}
-		own = append(own, strings.ToLower(t))
 	}
 	verb, used := "", false // current verb, and whether it has taken numbers
 	pending := []int{}      // numbers seen before any verb, e.g. "#2 no"
@@ -424,6 +450,36 @@ func nums(m map[int]bool) string {
 		ss = append(ss, strconv.Itoa(n))
 	}
 	return strings.Join(ss, " ")
+}
+
+// OwnText returns the part of a reply the sender wrote, without the quoted
+// original or a signature.
+func OwnText(text string) string {
+	var own []string
+	for _, line := range strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n") {
+		t := strings.TrimSpace(line)
+		if strings.HasPrefix(t, ">") || quoteStartRe.MatchString(t) || t == "--" {
+			break
+		}
+		own = append(own, t)
+	}
+	return strings.TrimSpace(strings.Join(own, "\n"))
+}
+
+// MaxQuestionLen bounds a follow-up question.
+const MaxQuestionLen = 1000
+
+// Question returns the follow-up question in a reply, if it has one: the
+// sender's own text, when it contains a question mark.
+func Question(text string) string {
+	q := OwnText(text)
+	if !strings.Contains(q, "?") {
+		return ""
+	}
+	if len(q) > MaxQuestionLen {
+		q = q[:MaxQuestionLen]
+	}
+	return q
 }
 
 func mark(d *Decision, verb string, n int) {

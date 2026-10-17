@@ -5,6 +5,7 @@
 #   sudo ffagentctl analyze | matchup | lineup | waivers | trades | free-agents --pos RB
 #   sudo ffagentctl secrets set      # refresh ESPN cookies (hidden input)
 #   sudo ffagentctl secrets set email  # replace the Gmail app password
+#   sudo ffagentctl secrets set anthropic  # Anthropic API key for questions
 #   sudo ffagentctl secrets check
 #   sudo ffagentctl email-test       # send a test email, check reply reading
 #   sudo ffagentctl mode apply       # watcher emails moves for your approval
@@ -22,7 +23,7 @@ UNIT=ffagent-watch.service
 
 die() { echo "ffagentctl: $*" >&2; exit 1; }
 [[ $EUID -eq 0 ]] || die "run with sudo"
-[[ $# -gt 0 ]] || { sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
+[[ $# -gt 0 ]] || { sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
 
 case "$1" in
   mode)

@@ -154,7 +154,7 @@ TXT
   "$CTL" secrets set </dev/tty || die "storing the cookies failed; re-run: sudo ffagentctl secrets set"
 fi
 
-if [[ -n ${NEED_EMAIL_SECRET:-} ]] || ! "$CTL" secrets check </dev/null 2>/dev/null | grep -q 'email_password  set'; then
+if [[ -n ${NEED_EMAIL_SECRET:-} ]] || ! "$CTL" secrets check </dev/null 2>/dev/null | grep -Eq 'email_password +set'; then
   say "Gmail app password for the agent's account"
   cat <<'TXT'
 In the agent's Gmail account:
@@ -213,5 +213,7 @@ cat <<TXT
   sudo ffagentctl email-test     check email sending and reply reading
   sudo ffagentctl secrets set    refresh the ESPN cookies when they expire
   sudo ffagentctl secrets set email   replace the Gmail app password
+  sudo $SRC/deploy/setup-phone.sh  turn on the iPhone app (over Tailscale)
+  sudo $SRC/deploy/setup-ask.sh    turn on follow-up questions answered by Claude
   sudo $SRC/deploy/uninstall.sh  remove everything
 TXT

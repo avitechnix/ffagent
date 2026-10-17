@@ -20,6 +20,7 @@ import (
 	"github.com/avitechnix/ffagent/internal/agent"
 	"github.com/avitechnix/ffagent/internal/analysis"
 	"github.com/avitechnix/ffagent/internal/approval"
+	"github.com/avitechnix/ffagent/internal/ask"
 	"github.com/avitechnix/ffagent/internal/config"
 	"github.com/avitechnix/ffagent/internal/espn"
 	"github.com/avitechnix/ffagent/internal/mail"
@@ -48,6 +49,7 @@ Commands:
   email-test     Send a test email and check the agent can read replies
   secrets set    Store your ESPN cookies in the encrypted vault (hidden input)
   secrets set email   Store the email account's app password
+  secrets set anthropic  Store an Anthropic API key (for follow-up questions)
   secrets check  Verify the vault decrypts (never prints the values)
   secrets passwd Change the vault passphrase
 
@@ -154,6 +156,14 @@ func main() {
 			StatePath: filepath.Join(filepath.Dir(*vaultPath), "watch-state.json")}
 		if acct := mailAccount(cfg); acct != nil {
 			w.Mailer = acct
+		}
+		if cfg.Ask.Enabled {
+			if cfg.AnthropicKey.Empty() {
+				fmt.Fprintln(os.Stderr, "note: follow-up questions are enabled but there's no Anthropic API key in the vault; run `ffagent secrets set anthropic`")
+			} else {
+				w.Asker = ask.New(cfg.AnthropicKey, cfg.Ask.Model)
+				fmt.Fprintf(out, "Follow-up questions are on (answered by %s, at most %d a day).\n", cfg.Ask.Model, cfg.Ask.MaxPerDay)
+			}
 		}
 		mode := "dry run: logging only"
 		if *apply && cfg.ApprovalMode == "email" {
@@ -280,7 +290,7 @@ func loadInjuries(ctx context.Context, ag *agent.Agent, nc *news.Client) {
 	}
 	ag.Injuries = map[int]analysis.Injury{}
 	for id, r := range reports {
-		ag.Injuries[id] = analysis.Injury{PlayerID: id, ProTeamID: r.ProTeamID, Status: r.Status, Date: r.Date, Returning: r.Returning}
+		ag.Injuries[id] = analysis.Injury{PlayerID: id, ProTeamID: r.ProTeamID, Status: r.Status, Date: r.Date, Returning: r.Returning, Note: r.Comment}
 	}
 }
 

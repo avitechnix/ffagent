@@ -104,6 +104,23 @@ main { padding: 12px 16px 24px; max-width: 640px; margin: 0 auto; }
 .btn-approve { background: var(--btn-good); color: #fff; }
 .btn-decline { background: var(--chip); color: var(--bad); }
 .actions button:disabled { opacity: .5; }
+.ask { margin-top: 12px; border-top: 1px solid var(--line); padding-top: 10px; }
+.ask:empty { display: none; }
+.qa { margin-bottom: 10px; }
+.qa .q { font-weight: 600; font-size: 15px; overflow-wrap: anywhere; }
+.qa .a { margin-top: 4px; font-size: 15px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.qa .thinking { color: var(--muted); }
+.ask button { border: 0; font: inherit; font-weight: 600; min-height: 44px; border-radius: 10px; }
+.ask-open { width: 100%; background: none; color: var(--accent); }
+.ask-form textarea {
+  width: 100%; font: inherit; font-size: 16px; padding: 10px 12px; border-radius: 10px;
+  border: 1px solid var(--line); background: var(--bg); color: var(--text); resize: vertical;
+}
+.ask-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+.ask-row .muted { flex: 1; }
+.ask-cancel { background: var(--chip); color: var(--text); padding: 0 14px; }
+.ask-send { background: var(--accent); color: #fff; padding: 0 18px; }
+.ask-send:disabled { opacity: .5; }
 .waiting { margin-top: 10px; font-size: 14px; color: var(--good); font-weight: 600; }
 
 .score { display: grid; grid-template-columns: 1fr auto 1fr; align-items: stretch; text-align: center; gap: 8px; }

@@ -16,6 +16,8 @@ type Injury struct {
 	// Returning marks players designated to return (IR-R, PUP-R, NFI-R):
 	// they're coming back, so they open no opportunity for teammates.
 	Returning bool
+	// Note is the injury report's comment, e.g. "limited in practice Thursday".
+	Note string
 }
 
 // opportunityShare is roughly how much of an injured starter's production

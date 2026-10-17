@@ -172,8 +172,14 @@ func (w *Watcher) TickApprovals(ctx context.Context) error {
 				continue
 			}
 			d := approval.ParseReply(r.Text)
+			question := approval.Question(r.Text)
+			if question != "" {
+				w.answerByEmail(ctx, b, question)
+			}
 			if d.Empty() {
-				_ = w.send(ctx, b, "Re: "+b.Subject, "I couldn't find a decision in your reply. Reply with, for example:\n  approve all\n  approve 1 3\n  decline 2\n", b.MessageID)
+				if question == "" {
+					_ = w.send(ctx, b, "Re: "+b.Subject, "I couldn't find a decision in your reply. Reply with, for example:\n  approve all\n  approve 1 3\n  decline 2\nor ask a question about a move.\n", b.MessageID)
+				}
 				continue
 			}
 			changed := st.Decide(b, d, "email", now)

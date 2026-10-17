@@ -2,6 +2,7 @@ package approval
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -25,6 +26,10 @@ func TestParseReply(t *testing.T) {
 		"approve 1\n-- \nSent from my iPhone": {approve: []int{1}, undecided: []int{2, 3}},
 		// Ambiguous: a stray "no" makes it decline (the safe direction).
 		"yes, no rush": {decline: []int{1, 2, 3}},
+		// Questions are never decisions.
+		"should I decline 2?":                       {undecided: []int{1, 2, 3}},
+		"yes, but why not Mason?":                   {undecided: []int{1, 2, 3}},
+		"approve 1\nwhy drop Bigsby instead of #2?": {approve: []int{1}, undecided: []int{2, 3}},
 	}
 	for text, w := range cases {
 		d := ParseReply(text)
@@ -93,5 +98,22 @@ func TestStoreLifecycle(t *testing.T) {
 	s2, err := Load(path)
 	if err != nil || len(s2.Items) != 4 || len(s2.Approved()) != 2 || s2.NextID != 5 {
 		t.Fatalf("reload: %v %+v", err, s2)
+	}
+}
+
+func TestQuestion(t *testing.T) {
+	cases := map[string]string{
+		"why Davis over Mason?": "why Davis over Mason?",
+		"approve 1\nWhat if Hall plays Sunday?\n\nOn Fri, ffagent wrote:\n> stuff?": "approve 1\nWhat if Hall plays Sunday?",
+		"approve all":    "",
+		"thanks\n> why?": "",
+	}
+	for in, want := range cases {
+		if got := Question(in); got != want {
+			t.Errorf("Question(%q) = %q, want %q", in, got, want)
+		}
+	}
+	if q := Question(strings.Repeat("a", 2000) + "?"); len(q) != MaxQuestionLen {
+		t.Errorf("not truncated: %d", len(q))
 	}
 }

@@ -15,6 +15,7 @@ import (
 
 	"github.com/avitechnix/ffagent/internal/analysis"
 	"github.com/avitechnix/ffagent/internal/approval"
+	"github.com/avitechnix/ffagent/internal/ask"
 	"github.com/avitechnix/ffagent/internal/espn"
 	"github.com/avitechnix/ffagent/internal/news"
 )
@@ -62,6 +63,9 @@ type Watcher struct {
 	// proposed by email and only run once you approve them.
 	Mailer        Mailer
 	ApprovalsPath string
+
+	// Asker answers follow-up questions about proposed moves (nil = off).
+	Asker ask.Answerer
 
 	state     WatchState
 	approvals *approval.Store
@@ -169,7 +173,7 @@ func (w *Watcher) Tick(ctx context.Context) error {
 	// Feed the news into the valuation model.
 	inj := make(map[int]analysis.Injury, len(reports))
 	for id, r := range reports {
-		inj[id] = analysis.Injury{PlayerID: id, ProTeamID: r.ProTeamID, Status: r.Status, Date: r.Date, Returning: r.Returning}
+		inj[id] = analysis.Injury{PlayerID: id, ProTeamID: r.ProTeamID, Status: r.Status, Date: r.Date, Returning: r.Returning, Note: r.Comment}
 	}
 	w.Agent.Injuries = inj
 

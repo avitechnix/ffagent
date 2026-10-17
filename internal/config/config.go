@@ -25,6 +25,7 @@ type Config struct {
 	ESPNS2        secrets.Secret `json:"-"`
 	SWID          secrets.Secret `json:"-"`
 	EmailPassword secrets.Secret `json:"-"`
+	AnthropicKey  secrets.Secret `json:"-"`
 
 	// ProtectedPlayers are never dropped or traded (names or ESPN player IDs).
 	ProtectedPlayers []string `json:"protected_players"`
@@ -70,6 +71,10 @@ type Config struct {
 	// Web is the phone app, served to your Tailscale network.
 	Web WebConfig `json:"web"`
 
+	// Ask lets you ask follow-up questions about proposed moves, answered by
+	// Claude from the agent's data. Needs an Anthropic API key in the vault.
+	Ask AskConfig `json:"ask"`
+
 	// Trades.
 	MinTradeGain     float64 `json:"min_trade_gain"`
 	TradeTolerance   float64 `json:"trade_tolerance"`
@@ -101,6 +106,13 @@ type WebConfig struct {
 	Enabled       bool     `json:"enabled"`
 	Listen        string   `json:"listen"`
 	AllowedLogins []string `json:"allowed_logins"`
+}
+
+// AskConfig controls follow-up questions.
+type AskConfig struct {
+	Enabled   bool   `json:"enabled"`
+	Model     string `json:"model"`
+	MaxPerDay int    `json:"max_per_day"`
 }
 
 // Enabled reports whether email is configured.
@@ -143,6 +155,7 @@ func Default() Config {
 			DigestHour: 9, TimeZone: "America/New_York",
 		},
 		Web:              WebConfig{Listen: "127.0.0.1:8787"},
+		Ask:              AskConfig{Model: "claude-opus-5-5", MaxPerDay: 40},
 		MinTradeGain:     8,
 		TradeTolerance:   3,
 		MaxTradeIdeas:    5,
@@ -163,6 +176,7 @@ const (
 	VaultKeyESPNS2 = "espn_s2"
 	VaultKeySWID   = "swid"
 	VaultKeyEmail  = "email_password"
+	VaultKeyClaude = "anthropic_api_key"
 )
 
 // plaintextKeys are config-file fields and environment variables that would
@@ -292,5 +306,6 @@ func (c *Config) LoadSecrets(vaultPath string) error {
 	}
 	c.ESPNS2, c.SWID = vals[VaultKeyESPNS2], vals[VaultKeySWID]
 	c.EmailPassword = vals[VaultKeyEmail]
+	c.AnthropicKey = vals[VaultKeyClaude]
 	return nil
 }
