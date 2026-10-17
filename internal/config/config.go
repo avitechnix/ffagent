@@ -4,6 +4,7 @@ package config
 import (
 	"encoding/json"
 	"fmt"
+	"net"
 	"os"
 	"strconv"
 	"strings"
@@ -66,6 +67,9 @@ type Config struct {
 
 	Email EmailConfig `json:"email"`
 
+	// Web is the phone app, served to your Tailscale network.
+	Web WebConfig `json:"web"`
+
 	// Trades.
 	MinTradeGain     float64 `json:"min_trade_gain"`
 	TradeTolerance   float64 `json:"trade_tolerance"`
@@ -88,6 +92,15 @@ type EmailConfig struct {
 	IMAPPort   int    `json:"imap_port"`
 	DigestHour int    `json:"digest_hour"` // local hour for the daily summary
 	TimeZone   string `json:"time_zone"`
+}
+
+// WebConfig controls the phone web app. It listens on localhost only;
+// `tailscale serve` publishes it to your private tailnet over HTTPS, and
+// only requests from AllowedLogins (Tailscale identities) are served.
+type WebConfig struct {
+	Enabled       bool     `json:"enabled"`
+	Listen        string   `json:"listen"`
+	AllowedLogins []string `json:"allowed_logins"`
 }
 
 // Enabled reports whether email is configured.
@@ -129,6 +142,7 @@ func Default() Config {
 			IMAPHost: "imap.gmail.com", IMAPPort: 993,
 			DigestHour: 9, TimeZone: "America/New_York",
 		},
+		Web:              WebConfig{Listen: "127.0.0.1:8787"},
 		MinTradeGain:     8,
 		TradeTolerance:   3,
 		MaxTradeIdeas:    5,
@@ -240,6 +254,21 @@ func Load(path string) (Config, error) {
 		return c, fmt.Errorf(`config: approval_mode must be "email" or "auto"`)
 	}
 	c.Email.NotifyTo = strings.ToLower(strings.TrimSpace(c.Email.NotifyTo))
+	for i, l := range c.Web.AllowedLogins {
+		c.Web.AllowedLogins[i] = strings.ToLower(strings.TrimSpace(l))
+	}
+	if c.Web.Enabled {
+		if len(c.Web.AllowedLogins) == 0 {
+			return c, fmt.Errorf("config: web.allowed_logins must list your Tailscale login (e.g. you@gmail.com)")
+		}
+		host, _, err := net.SplitHostPort(c.Web.Listen)
+		if err != nil {
+			return c, fmt.Errorf("config: web.listen: %w", err)
+		}
+		if ip := net.ParseIP(host); host != "localhost" && (ip == nil || !ip.IsLoopback()) {
+			return c, fmt.Errorf("config: web.listen must be a localhost address; publish it with `tailscale serve`, never directly")
+		}
+	}
 	if c.LeagueID == 0 {
 		return c, fmt.Errorf("config: league_id is required (set ESPN_LEAGUE_ID or league_id in the config file)")
 	}

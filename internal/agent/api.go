@@ -1,0 +1,219 @@
+package agent
+
+import (
+	"errors"
+	"fmt"
+	"sort"
+	"time"
+
+	"github.com/avitechnix/ffagent/internal/approval"
+	"github.com/avitechnix/ffagent/internal/espn"
+)
+
+// Snapshot is everything the phone app shows, copied out under the
+// watcher's lock so web handlers never touch live state.
+type Snapshot struct {
+	Status  AppStatus  `json:"status"`
+	Pending []AppItem  `json:"pending"`
+	History []AppItem  `json:"history"`
+	Roster  []AppRow   `json:"roster"`
+	Lineup  []AppStart `json:"lineup"`
+}
+
+// AppStatus is the header: team, matchup, and what the agent is doing.
+type AppStatus struct {
+	League       string    `json:"league"`
+	Week         int       `json:"week"`
+	Team         string    `json:"team"`
+	Record       string    `json:"record"`
+	Opponent     string    `json:"opponent,omitempty"`
+	MyProjected  float64   `json:"my_projected"`
+	OppProjected float64   `json:"opp_projected"`
+	WinProb      float64   `json:"win_prob"`
+	Strategy     string    `json:"strategy,omitempty"`
+	Mode         string    `json:"mode"` // approve, auto, dry-run
+	LastCheck    time.Time `json:"last_check"`
+	PlannedAt    time.Time `json:"planned_at"`
+	Ready        bool      `json:"ready"` // false until the first plan is made
+}
+
+// AppItem is one proposed move and what happened to it.
+type AppItem struct {
+	ID      int       `json:"id"`
+	Number  int       `json:"number"`
+	Batch   string    `json:"batch"`
+	Kind    string    `json:"kind"`
+	Label   string    `json:"label"`
+	Summary string    `json:"summary"`
+	Reason  string    `json:"reason"`
+	Needs   []string  `json:"needs,omitempty"` // summaries of moves it depends on
+	Status  string    `json:"status"`
+	Result  string    `json:"result,omitempty"`
+	Created time.Time `json:"created"`
+	Expires time.Time `json:"expires,omitempty"`
+	Decided time.Time `json:"decided,omitempty"`
+	Via     string    `json:"via,omitempty"`
+}
+
+// AppRow is one roster player's analysis.
+type AppRow struct {
+	Slot     string   `json:"slot"`
+	Name     string   `json:"name"`
+	Position string   `json:"position"`
+	Team     string   `json:"team"`
+	Injury   string   `json:"injury,omitempty"`
+	ESPN     float64  `json:"espn"`
+	Proj     float64  `json:"proj"`
+	StdDev   float64  `json:"sd"`
+	Accuracy float64  `json:"accuracy,omitempty"` // actual/projected; 0 when unknown
+	Avg      float64  `json:"avg"`
+	Last3    float64  `json:"last3"`
+	ROS      float64  `json:"ros"`
+	Notes    []string `json:"notes,omitempty"`
+}
+
+// AppStart is one starter in the recommended lineup.
+type AppStart struct {
+	Slot   string  `json:"slot"`
+	Name   string  `json:"name"`
+	Team   string  `json:"team"`
+	Proj   float64 `json:"proj"`
+	Locked bool    `json:"locked"`
+}
+
+// Snapshot returns the current state for the phone app.
+func (w *Watcher) Snapshot() Snapshot {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	now := w.Agent.Now()
+	var s Snapshot
+	s.Status.Mode = "dry-run"
+	if w.Apply {
+		s.Status.Mode = "approve"
+		if !w.emailApprovals() {
+			s.Status.Mode = "auto"
+		}
+	}
+	s.Status.LastCheck = w.lastTick
+
+	if st := w.approvals; st != nil {
+		for _, it := range st.Pending() {
+			s.Pending = append(s.Pending, appItem(st, it))
+		}
+		for _, it := range st.Approved() { // approved but waiting on a dependency
+			s.Pending = append(s.Pending, appItem(st, it))
+		}
+		for _, it := range st.Since(now.Add(-7 * 24 * time.Hour)) {
+			if it.Status != approval.Pending && it.Status != approval.Approved {
+				s.History = append(s.History, appItem(st, it))
+			}
+		}
+		sort.Slice(s.Pending, func(i, j int) bool { return s.Pending[i].ID < s.Pending[j].ID })
+		sort.Slice(s.History, func(i, j int) bool { return s.History[i].ID > s.History[j].ID })
+	}
+
+	p := w.latest
+	if p == nil {
+		return s
+	}
+	s.Status.Ready, s.Status.PlannedAt = true, w.latestAt
+	s.Status.League, s.Status.Week, s.Status.Team = p.League.Name, p.League.CurrentWeek, p.Me.Name
+	s.Status.Record = recordString(p.Me)
+	if m := p.Matchup; m != nil {
+		s.Status.MyProjected, s.Status.WinProb, s.Status.Strategy = m.MyProjected, m.WinProb, m.Strategy
+		if m.Opponent != nil {
+			s.Status.Opponent, s.Status.OppProjected = m.Opponent.Name, m.OppProjected
+		}
+	}
+	roster := append([]*espn.Player(nil), p.Me.Roster...)
+	sort.SliceStable(roster, func(i, j int) bool { return slotOrder(roster[i].LineupSlot) < slotOrder(roster[j].LineupSlot) })
+	for _, pl := range roster {
+		v := p.Values[pl.ID]
+		if v == nil {
+			continue
+		}
+		row := AppRow{
+			Slot: espn.SlotName(pl.LineupSlot), Name: pl.Name, Position: pl.Position, Team: pl.ProTeam,
+			ESPN: v.ESPNWeekProjection, Proj: v.WeekProjection, StdDev: v.WeekStdDev,
+			Avg: v.SeasonAvg, Last3: v.RecentAvg, ROS: v.ROSValue, Notes: v.Notes,
+		}
+		if st := pl.EffectiveInjury(); st != espn.InjuryActive {
+			row.Injury = st
+		}
+		if v.ProjectedTotal > 0 {
+			row.Accuracy = v.Accuracy
+		}
+		s.Roster = append(s.Roster, row)
+	}
+	if p.Roster != nil {
+		for _, pl := range p.Roster.Roster {
+			slot, ok := p.Lineup.Slots[pl.ID]
+			if !ok || !espn.IsStartingSlot(slot) {
+				continue
+			}
+			proj := 0.0
+			if v := p.Values[pl.ID]; v != nil {
+				proj = v.WeekProjection
+			}
+			s.Lineup = append(s.Lineup, AppStart{Slot: espn.SlotName(slot), Name: pl.Name, Team: pl.ProTeam, Proj: proj, Locked: pl.Locked})
+		}
+		sort.SliceStable(s.Lineup, func(i, j int) bool { return lineupOrder(s.Lineup[i].Slot) < lineupOrder(s.Lineup[j].Slot) })
+	}
+	return s
+}
+
+// Decide records your decision on a move from the phone app; approved
+// moves run on the watcher's next pass (prompted immediately), after the
+// same fresh re-check as an email approval.
+func (w *Watcher) Decide(id int, approve bool) (AppItem, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.approvals == nil {
+		return AppItem{}, errors.New("the agent isn't ready yet")
+	}
+	if !w.Apply || !w.emailApprovals() {
+		return AppItem{}, errors.New("the agent isn't in approve mode")
+	}
+	it, err := w.approvals.DecideItem(id, approve, "app", w.Agent.Now())
+	if err != nil {
+		return AppItem{}, err
+	}
+	if err := w.approvals.Save(w.Agent.Now()); err != nil {
+		return AppItem{}, err
+	}
+	w.poke()
+	return appItem(w.approvals, it), nil
+}
+
+func appItem(st *approval.Store, it *approval.Item) AppItem {
+	a := AppItem{
+		ID: it.ID, Number: it.Number, Batch: it.Batch, Kind: it.Kind, Label: kindLabel(it.Kind),
+		Summary: it.Summary, Reason: it.Reason, Status: string(it.Status), Result: it.Result,
+		Created: it.Created, Expires: it.Expires, Decided: it.Decided, Via: it.Via,
+	}
+	for _, id := range it.Depends {
+		if d := st.Item(id); d != nil {
+			a.Needs = append(a.Needs, d.Summary)
+		}
+	}
+	return a
+}
+
+func recordString(t *espn.Team) string {
+	r := fmt.Sprintf("%d-%d", t.Wins, t.Losses)
+	if t.Ties > 0 {
+		r += fmt.Sprintf("-%d", t.Ties)
+	}
+	return r
+}
+
+// lineupOrder sorts starters the way ESPN lists them.
+func lineupOrder(slot string) int {
+	order := []string{"QB", "TQB", "OP", "RB", "RB/WR", "WR", "WR/TE", "TE", "FLEX", "D/ST", "K"}
+	for i, s := range order {
+		if s == slot {
+			return i
+		}
+	}
+	return len(order)
+}

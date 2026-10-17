@@ -261,6 +261,25 @@ func (s *Store) Decide(b *Batch, d Decision, via string, now time.Time) []*Item 
 	return out
 }
 
+// DecideItem approves or declines one pending item (e.g. from the phone app).
+func (s *Store) DecideItem(id int, approve bool, via string, now time.Time) (*Item, error) {
+	it := s.Item(id)
+	if it == nil {
+		return nil, errors.New("no such move")
+	}
+	if it.Status != Pending {
+		return it, errors.New("that move was already " + string(it.Status))
+	}
+	it.Decided, it.Via = now, via
+	if approve {
+		it.Status = Approved
+	} else {
+		it.Status, it.Done, it.Result = Declined, now, "declined by you"
+		s.Declined[it.Signature] = now
+	}
+	return it, nil
+}
+
 // RecentlyDeclined reports whether a move was declined within cooldown.
 func (s *Store) RecentlyDeclined(sig string, now time.Time, cooldown time.Duration) bool {
 	t, ok := s.Declined[sig]

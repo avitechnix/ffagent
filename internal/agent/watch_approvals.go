@@ -136,6 +136,8 @@ func (w *Watcher) send(ctx context.Context, b *approval.Batch, subject, body, in
 // TickApprovals reads replies, expires stale proposals, runs approved
 // moves, emails the results, and sends the daily summary when it's due.
 func (w *Watcher) TickApprovals(ctx context.Context) error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
 	if err := w.ensureLoaded(); err != nil {
 		return err
 	}
@@ -224,6 +226,7 @@ func (w *Watcher) maybeDigest(ctx context.Context, now time.Time) error {
 	if err != nil {
 		return err
 	}
+	w.remember(p)
 	var items []*approval.Item
 	for _, t := range p.Trades {
 		sig := t.Action.Signature()
