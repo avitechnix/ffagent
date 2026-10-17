@@ -47,8 +47,9 @@ Everything is a **dry run by default**. Nothing changes on ESPN unless you pass
 
 ## Server install (recommended)
 
-On any Linux server with systemd 250+ (Ubuntu 22.04+, Debian 12+, Fedora, etc.), for
-example a small VPS or a Raspberry Pi:
+On any Linux server with systemd 250+, for example a small VPS or a Raspberry Pi. That
+means Ubuntu 24.04+, Debian 12+ or Fedora 36+. Ubuntu 22.04 won't work: it ships
+systemd 249.
 
 ```sh
 git clone https://github.com/avitechnix/ffagent
