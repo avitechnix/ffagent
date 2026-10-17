@@ -35,6 +35,7 @@ type AppStatus struct {
 	LastCheck    time.Time `json:"last_check"`
 	PlannedAt    time.Time `json:"planned_at"`
 	Ready        bool      `json:"ready"` // false until the first plan is made
+	AskEnabled   bool      `json:"ask_enabled"`
 }
 
 // AppItem is one proposed move and what happened to it.
@@ -53,6 +54,15 @@ type AppItem struct {
 	Expires time.Time `json:"expires,omitempty"`
 	Decided time.Time `json:"decided,omitempty"`
 	Via     string    `json:"via,omitempty"`
+	Thread  []AppQA   `json:"thread,omitempty"` // follow-up questions about this move
+}
+
+// AppQA is one follow-up question and Claude's answer.
+type AppQA struct {
+	Question string    `json:"question"`
+	Answer   string    `json:"answer"`
+	Via      string    `json:"via"`
+	At       time.Time `json:"at"`
 }
 
 // AppRow is one roster player's analysis.
@@ -95,6 +105,7 @@ func (w *Watcher) Snapshot() Snapshot {
 		}
 	}
 	s.Status.LastCheck = w.lastTick
+	s.Status.AskEnabled = w.Asker != nil
 
 	if st := w.approvals; st != nil {
 		for _, it := range st.Pending() {
@@ -194,6 +205,14 @@ func appItem(st *approval.Store, it *approval.Item) AppItem {
 	for _, id := range it.Depends {
 		if d := st.Item(id); d != nil {
 			a.Needs = append(a.Needs, d.Summary)
+		}
+	}
+	// Questions asked about this move, plus email questions about its batch.
+	if b := st.BatchOf(it); b != nil {
+		for _, qa := range b.Thread {
+			if qa.Item == it.Number || qa.Item == 0 {
+				a.Thread = append(a.Thread, AppQA{Question: qa.Question, Answer: qa.Answer, Via: qa.Via, At: qa.At})
+			}
 		}
 	}
 	return a

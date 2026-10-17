@@ -138,6 +138,49 @@ between your own devices:
 The app works whenever Tailscale is connected on your phone. To turn it off:
 `sudo tailscale serve --https=443 off`.
 
+## Follow-up questions (optional, uses Claude)
+
+Ask about any proposed move before you decide: "Why drop Smith instead of Jones?",
+"What if Achane plays Sunday?", "Who else could I pick up?". Claude answers from the
+agent's own numbers:
+
+- the matchup and win probability;
+- every player in the move, with ESPN's projection vs the agent's adjusted one and
+  their track record;
+- your roster;
+- the best available players at those positions;
+- how the agent decides.
+
+You can ask two ways:
+
+- **In the phone app:** tap **Ask about this move** on a move's card.
+- **By email:** reply to the proposal email with your question. Any line with a `?` is
+  treated as a question and never as a decision, so "should I decline 2?" doesn't
+  decline anything. A reply can contain both, e.g. "approve 1" on one line and a
+  question on the next. The answer arrives in the same thread.
+
+Answers only explain. Claude has no tools and can't approve, decline or change a move.
+
+**Setup** (on the server, after the installer):
+
+```sh
+cd ~/ffagent && sudo ./deploy/setup-ask.sh
+```
+
+It asks for an Anthropic API key from console.anthropic.com (input is hidden; the key
+is stored only in the encrypted vault) and turns on `"ask"` in the config. To replace
+the key later, run `sudo ffagentctl secrets set anthropic`.
+
+**Privacy and cost:**
+
+- Each question sends that move's league data (team and player names, projections,
+  your roster) and your question to the Anthropic API.
+- Nothing is sent unless you ask.
+- `ask.max_per_day` (default 40) caps questions per day. Also set a monthly spend
+  limit in the Anthropic console.
+- Answers use `claude-opus-5-5` (`ask.model`). If Claude declines a question, the
+  API retries it on a fallback model automatically.
+
 ## Setup (manual / development)
 
 ```sh
@@ -385,6 +428,7 @@ internal/agent      IR, pickups, matchup strategy, trades, execution, reports
 internal/config     JSON + env configuration (rejects plaintext credentials)
 internal/news       ESPN injury report and headline feeds
 internal/approval  approval queue, reply parsing, decision history
+internal/ask       follow-up questions answered by Claude (Anthropic Go SDK)
 internal/web       phone web app: localhost HTTP server, Tailscale identity check, static UI
 internal/mail      SMTP sending and minimal IMAP reply reading (TLS only)
 internal/secrets    encrypted vault, passphrase sources, redacting Secret type

@@ -63,8 +63,8 @@ func openOrCreate(path string) ([]byte, map[string]secrets.Secret, error) {
 }
 
 func secretsSet(path, which string) error {
-	if which != "espn" && which != "email" {
-		return fmt.Errorf("secrets set: want 'espn' or 'email', not %q", which)
+	if which != "espn" && which != "email" && which != "anthropic" {
+		return fmt.Errorf("secrets set: want 'espn', 'email' or 'anthropic', not %q", which)
 	}
 	pass, vals, err := openOrCreate(path)
 	if err != nil {
@@ -106,6 +106,18 @@ func secretsSet(path, which string) error {
 			return errors.New("that app password looks too short")
 		}
 		vals[config.VaultKeyEmail] = secrets.New(v)
+	case "anthropic":
+		fmt.Fprintln(os.Stderr, "Paste an Anthropic API key (create one at console.anthropic.com > API keys). Input is hidden.")
+		key, err := secrets.Prompt("API key: ")
+		if err != nil {
+			return err
+		}
+		defer wipe(key)
+		v := strings.TrimSpace(string(key))
+		if !strings.HasPrefix(v, "sk-ant-") || len(v) < 40 {
+			return errors.New("that doesn't look like an Anthropic API key (they start with sk-ant-)")
+		}
+		vals[config.VaultKeyClaude] = secrets.New(v)
 	}
 	data, err := secrets.Seal(pass, vals)
 	if err != nil {
@@ -129,12 +141,12 @@ func secretsCheck(path string) error {
 		return err
 	}
 	fmt.Println("Vault decrypts OK:", path)
-	for _, k := range []string{config.VaultKeyESPNS2, config.VaultKeySWID, config.VaultKeyEmail} {
+	for _, k := range []string{config.VaultKeyESPNS2, config.VaultKeySWID, config.VaultKeyEmail, config.VaultKeyClaude} {
 		state := "missing"
 		if v, ok := vals[k]; ok && !v.Empty() {
 			state = "set"
 		}
-		fmt.Printf("  %-15s %s\n", k, state)
+		fmt.Printf("  %-18s %s\n", k, state)
 	}
 	return nil
 }

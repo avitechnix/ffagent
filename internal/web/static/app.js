@@ -3,6 +3,8 @@
 const $ = (id) => document.getElementById(id);
 let data = null;
 let busy = false;
+// Follow-up question state per move id, kept across re-renders.
+const asks = {}; // id -> { open, draft, pending }
 
 // --- rendering helpers (all text goes through textContent; no innerHTML) ---
 
@@ -52,8 +54,12 @@ function empty(title, text) {
 
 // --- data ---
 
+// typing reports whether the user is writing a question; background
+// refreshes wait so the keyboard and cursor don't jump.
+const typing = () => !!(document.activeElement && document.activeElement.closest && document.activeElement.closest(".ask"));
+
 async function load(showSpinner) {
-  if (busy) return;
+  if (busy || (!showSpinner && typing())) return;
   busy = true;
   if (showSpinner) $("refresh").classList.add("spin");
   try {
@@ -83,6 +89,30 @@ async function decide(item, approve, buttons) {
   } catch (e) {
     buttons.forEach((b) => (b.disabled = false));
     toast(e.message, true);
+  }
+}
+
+async function ask(item, question) {
+  const st = asks[item.id];
+  st.pending = question;
+  st.draft = "";
+  renderMoves();
+  try {
+    const r = await fetch(`api/moves/${item.id}/ask`, {
+      method: "POST",
+      headers: { "X-FFAgent-Request": "1", "Content-Type": "application/json" },
+      body: JSON.stringify({ question }),
+    });
+    const body = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(body.error || r.statusText);
+    const cur = (data.pending || []).find((i) => i.id === item.id) || item; // a refresh may have replaced it
+    cur.thread = (cur.thread || []).concat([body]);
+  } catch (e) {
+    st.draft = question; // give the question back so it can be re-sent
+    toast(e.message, true);
+  } finally {
+    st.pending = null;
+    renderMoves();
   }
 }
 
@@ -141,11 +171,47 @@ function renderMoves() {
       it.needs && it.needs.length ? el("p", { class: "needs", text: "Only runs if this runs too: " + it.needs.join("; ") }) : null,
       el("div", { class: "meta" },
         it.kind === "ADD" ? el("span", { text: "Free agent: first come, first served" }) : null,
-        it.expires ? el("span", { text: "Expires " + when(it.expires) }) : null),
+        when(it.expires) ? el("span", { text: "Expires " + when(it.expires) }) : null),
       it.status === "approved"
         ? el("p", { class: "waiting", text: "Approved: waiting on the move it depends on" })
-        : el("div", { class: "actions" }, declineBtn, approveBtn)));
+        : el("div", { class: "actions" }, declineBtn, approveBtn),
+      renderAsk(it)));
   }
+}
+
+function renderAsk(it) {
+  const thread = it.thread || [];
+  if (!data.status.ask_enabled && !thread.length) return null;
+  const st = (asks[it.id] ||= { open: false, draft: "", pending: null });
+  const box = el("div", { class: "ask" });
+  for (const qa of thread) {
+    box.append(el("div", { class: "qa" },
+      el("p", { class: "q", text: qa.question }),
+      el("p", { class: "a", text: qa.answer }),
+      el("p", { class: "muted small", text: [when(qa.at), qa.via === "email" ? "asked by email" : ""].filter(Boolean).join(" · ") })));
+  }
+  if (st.pending) {
+    box.append(el("div", { class: "qa" },
+      el("p", { class: "q", text: st.pending }),
+      el("p", { class: "a thinking", text: "Thinking…" })));
+  }
+  if (!data.status.ask_enabled) return box;
+  if (!st.open && !st.pending) {
+    box.append(el("button", { class: "ask-open", text: thread.length ? "Ask another question" : "Ask about this move",
+      onclick: () => { st.open = true; renderMoves(); const t = document.querySelector(`[data-ask="${it.id}"]`); if (t) t.focus(); } }));
+    return box;
+  }
+  if (st.pending) return box;
+  const input = el("textarea", { rows: "2", maxlength: "1000", "data-ask": it.id, "aria-label": "Your question",
+    placeholder: "e.g. Why drop him instead of my other WR?" });
+  input.value = st.draft;
+  const send = el("button", { class: "ask-send", text: "Ask", disabled: !st.draft.trim() });
+  input.addEventListener("input", () => { st.draft = input.value; send.disabled = !input.value.trim(); });
+  send.addEventListener("click", () => { const q = input.value.trim(); if (q) ask(it, q); });
+  const cancel = el("button", { class: "ask-cancel", text: "Cancel", onclick: () => { st.open = false; st.draft = ""; renderMoves(); } });
+  box.append(el("div", { class: "ask-form" }, input, el("div", { class: "ask-row" },
+    el("span", { class: "muted small", text: "Answered by Claude from the agent's data" }), cancel, send)));
+  return box;
 }
 
 function renderMatchup() {

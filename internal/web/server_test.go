@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -9,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/avitechnix/ffagent/internal/agent"
+	"github.com/avitechnix/ffagent/internal/approval"
 )
 
 type fakeBackend struct {
@@ -21,6 +23,14 @@ func (f *fakeBackend) Snapshot() agent.Snapshot {
 		Status:  agent.AppStatus{Team: "Drunk Pilots", Week: 6, Mode: "approve", Ready: true},
 		Pending: []agent.AppItem{{ID: 7, Number: 1, Kind: "ADD", Summary: "Add Backup RB", Status: "pending"}},
 	}
+}
+
+func (f *fakeBackend) Ask(_ context.Context, id int, q string) (approval.QA, error) {
+	if f.fail != nil {
+		return approval.QA{}, f.fail
+	}
+	f.decided = append(f.decided, "ask:"+q)
+	return approval.QA{Item: 1, Question: q, Answer: "Because Hall is out.", Via: "app"}, nil
 }
 
 func (f *fakeBackend) Decide(id int, approve bool) (agent.AppItem, error) {
@@ -116,5 +126,36 @@ func TestDecisionsNeedCSRFProtection(t *testing.T) {
 	f.fail = errors.New("that move was already executed")
 	if w := do(h, "POST", "/api/moves/7/approve", ok); w.Code != http.StatusConflict || !strings.Contains(w.Body.String(), "already executed") {
 		t.Errorf("conflict: %d %s", w.Code, w.Body)
+	}
+}
+
+func TestAskEndpoint(t *testing.T) {
+	f := &fakeBackend{}
+	h := (&Server{Backend: f, Allowed: []string{owner}}).Handler()
+	post := func(body string, hdr map[string]string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest("POST", "https://box.tail1234.ts.net/api/moves/7/ask", strings.NewReader(body))
+		for k, v := range hdr {
+			r.Header.Set(k, v)
+		}
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		return w
+	}
+	ok := map[string]string{loginHeader: owner, csrfHeader: "1"}
+	if w := post(`{"question":"why Davis?"}`, map[string]string{loginHeader: owner}); w.Code != http.StatusForbidden {
+		t.Errorf("ask without CSRF header: %d", w.Code)
+	}
+	w := post(`{"question":"why Davis?"}`, ok)
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "Hall is out") {
+		t.Fatalf("ask: %d %s", w.Code, w.Body)
+	}
+	if f.decided[0] != "ask:why Davis?" {
+		t.Errorf("backend got %v", f.decided)
+	}
+	if w := post(`not json`, ok); w.Code != http.StatusBadRequest {
+		t.Errorf("bad body: %d", w.Code)
+	}
+	if w := post(`{"question":"`+strings.Repeat("a", 9000)+`"}`, ok); w.Code != http.StatusBadRequest {
+		t.Errorf("oversized body: %d", w.Code)
 	}
 }
