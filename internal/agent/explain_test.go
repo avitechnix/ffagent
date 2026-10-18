@@ -148,3 +148,45 @@ func TestEmailQuestionWithAskOff(t *testing.T) {
 		t.Errorf("reply: %s", body)
 	}
 }
+
+func TestAskAnything(t *testing.T) {
+	w, _, _, _, star, backup := approvalWatcher(t)
+	fa := &fakeAsker{}
+	w.Asker = fa
+	w.Agent.Cfg.Ask.MaxPerDay = 2
+	ctx := context.Background()
+	if err := w.Tick(ctx); err != nil {
+		t.Fatal(err)
+	}
+	qa, err := w.AskAnything(ctx, " Who should I start at RB? ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if qa.Question != "Who should I start at RB?" || qa.Via != "app" {
+		t.Errorf("qa: %+v", qa)
+	}
+	data := fa.data[0]
+	for _, want := range []string{"YOUR RECOMMENDED LINEUP", "OPPONENT'S LINEUP", "YOUR ROSTER", "MOVES WAITING FOR YOUR DECISION", backup.Name, star.Name, "BEST AVAILABLE", "HOW THE AGENT DECIDES"} {
+		if !strings.Contains(data, want) {
+			t.Errorf("general data missing %q:\n%s", want, data)
+		}
+	}
+	if snap := w.Snapshot(); len(snap.Chat) != 1 || snap.Chat[0].Answer == "" {
+		t.Errorf("chat in snapshot: %+v", snap.Chat)
+	}
+	// Earlier questions are context, saved, and count toward the daily cap
+	// together with questions about moves.
+	if _, err := w.Ask(ctx, w.Snapshot().Pending[0].ID, "And this move?"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.AskAnything(ctx, "One more?"); err == nil || !strings.Contains(err.Error(), "limit") {
+		t.Errorf("cap not shared: %v", err)
+	}
+	if st, err := approval.Load(w.ApprovalsPath); err != nil || len(st.Chat) != 1 {
+		t.Errorf("chat not saved: %v", err)
+	}
+	w.Asker = nil
+	if _, err := w.AskAnything(ctx, "Hm?"); !errors.Is(err, errAskOff) {
+		t.Errorf("questions off: %v", err)
+	}
+}

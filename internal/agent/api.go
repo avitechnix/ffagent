@@ -21,6 +21,8 @@ type Snapshot struct {
 	Lineup  []AppStart `json:"lineup"`
 	// OppLineup is the opponent's lineup as set on ESPN.
 	OppLineup []AppStart `json:"opp_lineup,omitempty"`
+	// Chat is the Ask tab's recent questions and answers, oldest first.
+	Chat []AppQA `json:"chat,omitempty"`
 }
 
 // AppStatus is the header: team, matchup, and what the agent is doing.
@@ -137,6 +139,13 @@ func (w *Watcher) Snapshot() Snapshot {
 			if it.Status != approval.Pending && it.Status != approval.Approved {
 				s.History = append(s.History, appItem(st, it))
 			}
+		}
+		chat := st.Chat
+		if len(chat) > 30 {
+			chat = chat[len(chat)-30:]
+		}
+		for _, qa := range chat {
+			s.Chat = append(s.Chat, AppQA{Question: qa.Question, Answer: qa.Answer, Via: qa.Via, At: qa.At})
 		}
 		sort.Slice(s.Pending, func(i, j int) bool { return s.Pending[i].ID < s.Pending[j].ID })
 		sort.Slice(s.History, func(i, j int) bool { return s.History[i].ID > s.History[j].ID })

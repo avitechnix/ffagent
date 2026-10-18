@@ -425,3 +425,32 @@ main { padding: 14px 16px 24px; max-width: 640px; margin: 0 auto; }
 .ptr.ready { color: #fff; background: var(--accent); }
 .game-line .team-txt { flex: none; white-space: nowrap; }
 .game-line .game { min-width: 0; }
+
+/* --- Ask tab ------------------------------------------------------------ */
+.chat { display: flex; flex-direction: column; gap: 8px; padding: 4px 0 12px; }
+.bubble { max-width: 86%; padding: 11px 14px; border-radius: 18px; font-size: 15.5px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; box-shadow: var(--shadow); animation: rise .22s ease-out both; }
+.bubble.bot { align-self: flex-start; background: var(--surface); border: 1px solid var(--line); border-bottom-left-radius: 6px; }
+.bubble.bot b { display: block; margin-bottom: 3px; }
+.bubble.me { align-self: flex-end; color: #fff; background: linear-gradient(140deg, var(--hero-1), var(--hero-2)); border-bottom-right-radius: 6px; }
+.stamp { align-self: flex-start; font-size: 11.5px; color: var(--faint); margin: -2px 0 4px 8px; }
+.bubble.typing { display: inline-flex; gap: 5px; padding: 15px 16px; }
+.bubble.typing span { width: 7px; height: 7px; border-radius: 50%; background: var(--faint); animation: blink 1.2s infinite ease-in-out; }
+.bubble.typing span:nth-child(2) { animation-delay: .15s; }
+.bubble.typing span:nth-child(3) { animation-delay: .3s; }
+@keyframes blink { 0%, 80%, 100% { opacity: .25; transform: translateY(0); } 40% { opacity: 1; transform: translateY(-3px); } }
+.suggest { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 14px; }
+.suggest button { border: 1px solid var(--line); background: var(--surface); color: var(--accent); font-weight: 650; font-size: 14px; padding: 9px 13px; border-radius: 999px; box-shadow: var(--shadow); }
+.suggest button:active { transform: scale(.97); }
+.composer {
+  position: sticky; bottom: calc(86px + env(safe-area-inset-bottom)); z-index: 4;
+  display: flex; align-items: flex-end; gap: 8px; padding: 8px; margin: 0 -4px;
+  background: color-mix(in srgb, var(--surface) 88%, transparent); border: 1px solid var(--line); border-radius: 24px;
+  backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); box-shadow: 0 10px 28px -14px rgba(0, 0, 0, .45);
+}
+.composer textarea { flex: 1; min-height: 40px; max-height: 140px; resize: none; border: 0; outline: 0; background: transparent; color: var(--text); font: inherit; font-size: 16px; padding: 9px 10px; }
+.composer .send { flex: none; width: 40px; height: 40px; border-radius: 50%; border: 0; display: grid; place-items: center; color: #fff; background: linear-gradient(140deg, var(--hero-1), var(--hero-2)); }
+.composer .send svg { width: 20px; height: 20px; }
+.composer .send:disabled { opacity: .4; }
+.ask-off .cmd { display: block; margin: 14px auto 10px; padding: 10px 12px; border-radius: 10px; background: var(--surface-2); font: 13px/1.4 ui-monospace, "SF Mono", Menlo, monospace; color: var(--text); user-select: all; overflow-wrap: anywhere; text-align: left; max-width: 36ch; }
+.copy-btn { border: 0; background: var(--accent-soft); color: var(--accent); font-weight: 700; padding: 9px 16px; border-radius: 999px; }
+.tabbar button { font-size: 10.5px; }

@@ -46,7 +46,7 @@ func New(apiKey secrets.Secret, model string, opts ...option.RequestOption) *Cla
 }
 
 // SystemPrompt frames the explainer. It stays fixed so it caches well.
-const SystemPrompt = `You explain moves proposed by ffagent, an ESPN fantasy football assistant, to the manager of the team. The user message contains the agent's own data about the league and the proposed moves, followed by the manager's question.
+const SystemPrompt = `You are ffagent's assistant: you explain the moves ffagent (an ESPN fantasy football agent) proposes, and answer the team manager's questions about their lineup, matchup, roster and the waiver wire. The user message contains the agent's own data about the league (and, for a question about specific moves, those moves), followed by the manager's question.
 
 Answer from that data. Every number you give must come from it. If the data doesn't answer the question (for example, news after the agent's last check, or a player it has no numbers for), say what's missing instead of guessing. You have no access to live news.
 

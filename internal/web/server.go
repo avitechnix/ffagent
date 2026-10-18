@@ -29,6 +29,8 @@ type Backend interface {
 	Snapshot() agent.Snapshot
 	Decide(id int, approve bool) (agent.AppItem, error)
 	Ask(ctx context.Context, id int, question string) (approval.QA, error)
+	// AskAnything answers a question about the team in general.
+	AskAnything(ctx context.Context, question string) (approval.QA, error)
 	// TeamLogo returns the logo URL a fantasy team in the league chose.
 	TeamLogo(id int) string
 }
@@ -57,6 +59,7 @@ func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/snapshot", s.snapshot)
 	mux.HandleFunc("POST /api/moves/{id}/ask", s.ask)
+	mux.HandleFunc("POST /api/ask", s.askAnything)
 	mux.HandleFunc("POST /api/moves/{id}/{decision}", s.decide)
 	if s.Images == nil {
 		s.Images = &Images{}
@@ -162,6 +165,22 @@ func (s *Server) ask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	qa, err := s.Backend.Ask(r.Context(), id, body.Question)
+	if err != nil {
+		writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, qa)
+}
+
+func (s *Server) askAnything(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Question string `json:"question"`
+	}
+	if err := json.NewDecoder(io.LimitReader(r.Body, 8<<10)).Decode(&body); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "send {\"question\": \"...\"}"})
+		return
+	}
+	qa, err := s.Backend.AskAnything(r.Context(), body.Question)
 	if err != nil {
 		writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": err.Error()})
 		return
