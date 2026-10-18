@@ -76,6 +76,11 @@ type QA struct {
 // QuestionsSince counts follow-up questions asked since t (for the daily cap).
 func (s *Store) QuestionsSince(t time.Time) int {
 	n := 0
+	for _, qa := range s.Chat {
+		if qa.At.After(t) {
+			n++
+		}
+	}
 	for _, b := range s.Batches {
 		for _, qa := range b.Thread {
 			if qa.At.After(t) {
@@ -97,6 +102,9 @@ type Store struct {
 	Processed  map[string]time.Time `json:"processed_replies"` // reply Message-IDs
 	Declined   map[string]time.Time `json:"declined"`          // signature -> when
 	LastDigest string               `json:"last_digest"`       // YYYY-MM-DD
+	// Chat holds questions asked in the app's Ask tab, which aren't about
+	// any one batch of moves.
+	Chat []QA `json:"chat,omitempty"`
 
 	path string
 }
@@ -143,6 +151,16 @@ func (s *Store) Save(now time.Time) error {
 		}
 	}
 	s.Batches = batches
+	chat := s.Chat[:0]
+	for _, qa := range s.Chat {
+		if qa.At.After(cut) {
+			chat = append(chat, qa)
+		}
+	}
+	if len(chat) > 50 {
+		chat = chat[len(chat)-50:]
+	}
+	s.Chat = chat
 	for k, t := range s.Processed {
 		if t.Before(cut) {
 			delete(s.Processed, k)

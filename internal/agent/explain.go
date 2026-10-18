@@ -11,6 +11,7 @@ import (
 	"github.com/avitechnix/ffagent/internal/analysis"
 	"github.com/avitechnix/ffagent/internal/approval"
 	"github.com/avitechnix/ffagent/internal/espn"
+	"github.com/avitechnix/ffagent/internal/lineup"
 )
 
 // methodology tells Claude how the agent reasons, so it can explain the
@@ -32,16 +33,7 @@ func (w *Watcher) explainData(b *approval.Batch, focus *approval.Item) string {
 	p := w.latest
 	now := w.Agent.Now()
 
-	if p != nil {
-		fmt.Fprintf(&out, "LEAGUE: %s, week %d. As of %s.\n", p.League.Name, p.League.CurrentWeek, w.latestAt.Format(time.RFC1123))
-		fmt.Fprintf(&out, "YOUR TEAM: %s (%s)\n", p.Me.Name, recordString(p.Me))
-		if m := p.Matchup; m != nil && m.Opponent != nil {
-			fmt.Fprintf(&out, "THIS WEEK: vs %s. Projected %.1f to %.1f. Win probability %.0f%% with the proposed lineup, %.0f%% with the lineup as currently set. Strategy: %s.\n",
-				m.Opponent.Name, m.MyProjected, m.OppProjected, m.WinProb*100, p.CurrentWinProb*100, m.Strategy)
-		}
-	} else {
-		out.WriteString("LEAGUE: the agent hasn't completed a check since it started, so detailed numbers aren't available.\n")
-	}
+	w.writeLeague(&out)
 
 	out.WriteString("\nPROPOSED MOVES (this email/batch)\n")
 	ids := map[int]bool{}
@@ -80,33 +72,9 @@ func (w *Watcher) explainData(b *approval.Batch, focus *approval.Item) string {
 			w.describePlayer(&out, p, v)
 		}
 
-		out.WriteString("\nYOUR ROSTER (slot, player, this week's adjusted projection, rest-of-season points)\n")
-		roster := append([]*espn.Player(nil), p.Me.Roster...)
-		sort.SliceStable(roster, func(i, j int) bool { return slotOrder(roster[i].LineupSlot) < slotOrder(roster[j].LineupSlot) })
-		for _, pl := range roster {
-			if v := p.Values[pl.ID]; v != nil {
-				fmt.Fprintf(&out, "- %s %s (%s %s): %.1f this week, %.0f ROS%s\n", espn.SlotName(pl.LineupSlot), pl.Name, pl.Position, pl.ProTeam,
-					v.WeekProjection, v.ROSValue, injuryText(pl))
-			}
-		}
-
+		writeRoster(&out, p)
 		out.WriteString("\nBEST AVAILABLE FREE AGENTS / WAIVER PLAYERS AT THOSE POSITIONS (by rest-of-season points)\n")
-		for _, pos := range sortedKeys(positions) {
-			var avail []*analysis.Valuation
-			for _, v := range p.Values {
-				if v.Player.OnTeamID == 0 && v.Player.Position == pos {
-					avail = append(avail, v)
-				}
-			}
-			analysis.SortByROS(avail)
-			if len(avail) > 6 {
-				avail = avail[:6]
-			}
-			for _, v := range avail {
-				fmt.Fprintf(&out, "- %s %s (%s, %s): %.1f this week, %.0f ROS, %.1f per game%s%s\n", pos, v.Player.Name, v.Player.ProTeam, v.Player.Status,
-					v.WeekProjection, v.ROSValue, v.PerGame, injuryText(v.Player), notesText(v))
-			}
-		}
+		writeAvailable(&out, p, sortedKeys(positions), 6)
 	}
 
 	if len(b.Thread) > 0 {
@@ -117,6 +85,171 @@ func (w *Watcher) explainData(b *approval.Batch, focus *approval.Item) string {
 	}
 	out.WriteString("\n" + methodology + "\n")
 	return out.String()
+}
+
+// writeLeague writes the league, team and matchup header. Call with w.mu held.
+func (w *Watcher) writeLeague(out *strings.Builder) {
+	p := w.latest
+	if p == nil {
+		out.WriteString("LEAGUE: the agent hasn't completed a check since it started, so detailed numbers aren't available.\n")
+		return
+	}
+	fmt.Fprintf(out, "LEAGUE: %s, week %d. As of %s.\n", p.League.Name, p.League.CurrentWeek, w.latestAt.Format(time.RFC1123))
+	fmt.Fprintf(out, "YOUR TEAM: %s (%s)\n", p.Me.Name, recordString(p.Me))
+	if m := p.Matchup; m != nil && m.Opponent != nil {
+		fmt.Fprintf(out, "THIS WEEK: vs %s (%s). Projected %.1f to %.1f. Win probability %.0f%% with the recommended lineup, %.0f%% with the lineup as currently set. Strategy: %s.\n",
+			m.Opponent.Name, recordString(m.Opponent), m.MyProjected, m.OppProjected, m.WinProb*100, p.CurrentWinProb*100, m.Strategy)
+	}
+}
+
+// writeRoster lists my roster with this week's and rest-of-season points.
+func writeRoster(out *strings.Builder, p *Plan) {
+	out.WriteString("\nYOUR ROSTER (slot as set on ESPN, player, this week's projection, rest-of-season points)\n")
+	roster := append([]*espn.Player(nil), p.Me.Roster...)
+	sort.SliceStable(roster, func(i, j int) bool { return slotOrder(roster[i].LineupSlot) < slotOrder(roster[j].LineupSlot) })
+	for _, pl := range roster {
+		if v := p.Values[pl.ID]; v != nil {
+			fmt.Fprintf(out, "- %s %s (%s %s): %.1f this week (ESPN %.1f), %.0f ROS%s%s\n", espn.SlotName(pl.LineupSlot), pl.Name, pl.Position, pl.ProTeam,
+				v.WeekProjection, v.ESPNWeekProjection, v.ROSValue, injuryText(pl), notesText(v))
+		}
+	}
+}
+
+// writeAvailable lists the best unrostered players at each position.
+func writeAvailable(out *strings.Builder, p *Plan, positions []string, n int) {
+	for _, pos := range positions {
+		var avail []*analysis.Valuation
+		for _, v := range p.Values {
+			if v.Player.OnTeamID == 0 && v.Player.Position == pos {
+				avail = append(avail, v)
+			}
+		}
+		analysis.SortByROS(avail)
+		if len(avail) > n {
+			avail = avail[:n]
+		}
+		for _, v := range avail {
+			fmt.Fprintf(out, "- %s %s (%s, %s): %.1f this week, %.0f ROS, %.1f per game%s%s\n", pos, v.Player.Name, v.Player.ProTeam, v.Player.Status,
+				v.WeekProjection, v.ROSValue, v.PerGame, injuryText(v.Player), notesText(v))
+		}
+	}
+}
+
+// writeLineup lists a lineup's starters with projections and live points.
+func writeLineup(out *strings.Builder, p *Plan, roster []*espn.Player, a lineup.Assignment) {
+	sorted := append([]*espn.Player(nil), roster...)
+	sort.SliceStable(sorted, func(i, j int) bool { return slotOrder(a.Slots[sorted[i].ID]) < slotOrder(a.Slots[sorted[j].ID]) })
+	for _, pl := range sorted {
+		slot, ok := a.Slots[pl.ID]
+		if !ok || !espn.IsStartingSlot(slot) {
+			continue
+		}
+		v := p.Values[pl.ID]
+		if v == nil {
+			continue
+		}
+		live := ""
+		if pl.Locked {
+			if pl.GameLeft <= 0 {
+				live = fmt.Sprintf(" (final: %.1f)", v.WeekActual)
+			} else {
+				live = fmt.Sprintf(" (playing: %.1f so far, %.0f%% of the game left)", v.WeekActual, pl.GameLeft*100)
+			}
+		}
+		fmt.Fprintf(out, "- %s %s (%s %s): %.1f expected%s%s\n", espn.SlotName(slot), pl.Name, pl.Position, pl.ProTeam, v.WeekProjection, live, injuryText(pl))
+	}
+}
+
+// generalData is what Claude may use to answer a question from the Ask
+// tab: the whole team, not one batch of moves. Call with w.mu held.
+func (w *Watcher) generalData() string {
+	var out strings.Builder
+	p := w.latest
+	now := w.Agent.Now()
+	w.writeLeague(&out)
+	if p != nil {
+		if p.Roster != nil {
+			out.WriteString("\nYOUR RECOMMENDED LINEUP THIS WEEK\n")
+			writeLineup(&out, p, p.Roster.Roster, p.Lineup)
+		}
+		if m := p.Matchup; m != nil && m.Opponent != nil {
+			fmt.Fprintf(&out, "\nOPPONENT'S LINEUP (%s, as set on ESPN)\n", m.Opponent.Name)
+			writeLineup(&out, p, m.Opponent.Roster, m.OppLineup)
+		}
+		writeRoster(&out, p)
+	}
+	out.WriteString("\nMOVES WAITING FOR YOUR DECISION\n")
+	pending := 0
+	if st := w.approvals; st != nil {
+		for _, it := range append(st.Pending(), st.Approved()...) {
+			pending++
+			fmt.Fprintf(&out, "- [%s] %s (%s", kindLabel(it.Kind), it.Summary, it.Status)
+			if !it.Expires.IsZero() {
+				fmt.Fprintf(&out, ", expires in %s", it.Expires.Sub(now).Round(time.Minute))
+			}
+			fmt.Fprintf(&out, ")\n  agent's rationale: %s\n", it.Reason)
+		}
+	}
+	if pending == 0 {
+		out.WriteString("- none right now\n")
+	}
+	if p != nil {
+		out.WriteString("\nBEST AVAILABLE FREE AGENTS / WAIVER PLAYERS (by rest-of-season points; the agent only scans the top players at each position)\n")
+		writeAvailable(&out, p, []string{"QB", "RB", "WR", "TE", "K", "D/ST"}, 4)
+	}
+	if st := w.approvals; st != nil && len(st.Chat) > 0 {
+		out.WriteString("\nEARLIER QUESTIONS IN THIS CONVERSATION\n")
+		chat := st.Chat
+		if len(chat) > 6 {
+			chat = chat[len(chat)-6:]
+		}
+		for _, qa := range chat {
+			fmt.Fprintf(&out, "Q: %s\nA: %s\n", qa.Question, qa.Answer)
+		}
+	}
+	out.WriteString("\n" + methodology + "\n")
+	return out.String()
+}
+
+// AskAnything answers a question from the app's Ask tab, about the team in
+// general. The Claude call runs without holding the watcher's lock.
+func (w *Watcher) AskAnything(ctx context.Context, question string) (approval.QA, error) {
+	question = strings.TrimSpace(question)
+	if question == "" {
+		return approval.QA{}, errors.New("type a question first")
+	}
+	if len(question) > approval.MaxQuestionLen {
+		question = question[:approval.MaxQuestionLen]
+	}
+	w.mu.Lock()
+	if w.Asker == nil {
+		w.mu.Unlock()
+		return approval.QA{}, errAskOff
+	}
+	if w.approvals == nil {
+		w.mu.Unlock()
+		return approval.QA{}, errors.New("the agent isn't ready yet")
+	}
+	if err := w.askAllowed(); err != nil {
+		w.mu.Unlock()
+		return approval.QA{}, err
+	}
+	data := w.generalData()
+	asker := w.Asker
+	w.mu.Unlock()
+
+	ctx, cancel := context.WithTimeout(ctx, 100*time.Second)
+	defer cancel()
+	answer, err := asker.Answer(ctx, data, question)
+	if err != nil {
+		return approval.QA{}, err
+	}
+
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	qa := approval.QA{Question: question, Answer: answer, Via: "app", At: w.Agent.Now()}
+	w.approvals.Chat = append(w.approvals.Chat, qa)
+	return qa, w.approvals.Save(w.Agent.Now())
 }
 
 func (w *Watcher) describePlayer(out *strings.Builder, p *Plan, v *analysis.Valuation) {

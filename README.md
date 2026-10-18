@@ -155,9 +155,13 @@ agent's own numbers:
 - the best available players at those positions;
 - how the agent decides.
 
-You can ask two ways:
+You can ask three ways:
 
-- **In the phone app:** tap **Ask about this move** on a move's card.
+- **In the phone app's Ask tab:** anything about your team, any time: "Am I likely to win
+  this week?", "Who should I start at FLEX?", "Which free agent is worth picking up?".
+  Claude sees your lineup and your opponent's, your roster, the moves waiting for you and
+  the best players on the wire.
+- **On a move's card in the app:** tap **Ask about this move**.
 - **By email:** reply to the proposal email with your question. Any line with a `?` is
   treated as a question and never as a decision, so "should I decline 2?" doesn't
   decline anything. A reply can contain both, e.g. "approve 1" on one line and a

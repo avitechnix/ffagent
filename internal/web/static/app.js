@@ -5,6 +5,7 @@ let data = null;
 let busy = false;
 // Follow-up question state per move id, kept across re-renders.
 const asks = {}; // id -> { open, draft, pending }
+const chat = { draft: "", pending: null }; // the Ask tab
 
 // --- rendering helpers (all text goes through textContent; no innerHTML) ---
 
@@ -273,8 +274,88 @@ function render() {
 
   renderMoves();
   renderMatchup();
+  renderChat();
   renderRoster();
   renderHistory();
+}
+
+const SETUP_ASK = "cd ~/ffagent && sudo ./deploy/setup-ask.sh";
+
+// askOff explains how to turn follow-up questions on.
+function askOff() {
+  return el("div", { class: "card empty ask-off" },
+    el("div", { class: "glyph" }, icon("chat")),
+    el("h2", { text: "Ask Claude about your team" }),
+    el("p", { text: "Questions are turned off on your server. To turn them on, run this on the server (it asks for an Anthropic API key):" }),
+    el("code", { class: "cmd", text: SETUP_ASK }),
+    el("button", { class: "copy-btn", onclick: (e) => {
+      navigator.clipboard?.writeText(SETUP_ASK).then(() => toast("Copied"), () => {});
+      e.currentTarget.blur();
+    } }, "Copy command"));
+}
+
+const SUGGESTIONS = [
+  "Am I likely to win this week?",
+  "Who should I start at FLEX?",
+  "Which free agent is worth picking up?",
+  "Why is the agent suggesting these moves?",
+  "Who on my bench could I drop?",
+];
+
+async function askChat(question) {
+  chat.pending = question;
+  chat.draft = "";
+  renderChat(true);
+  try {
+    const r = await fetch("api/ask", {
+      method: "POST",
+      headers: { "X-FFAgent-Request": "1", "Content-Type": "application/json" },
+      body: JSON.stringify({ question }),
+    });
+    const body = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(body.error || r.statusText);
+    data.chat = (data.chat || []).concat([body]);
+  } catch (e) {
+    chat.draft = question;
+    toast(e.message, true);
+  } finally {
+    chat.pending = null;
+    renderChat(true);
+  }
+}
+
+function renderChat(scroll) {
+  const box = $("ask");
+  box.replaceChildren();
+  if (!data.status.ask_enabled) return box.append(askOff());
+  const thread = el("div", { class: "chat" },
+    el("div", { class: "bubble bot" },
+      el("b", { text: "Ask me anything about your team." }),
+      "I answer from the agent's numbers: your lineup and matchup, your roster, moves waiting for you and the best players on the wire. I can't make moves, but I can explain them."));
+  for (const qa of data.chat || []) {
+    thread.append(el("div", { class: "bubble me", text: qa.question }));
+    thread.append(el("div", { class: "bubble bot", text: qa.answer }), el("div", { class: "stamp", text: when(qa.at) }));
+  }
+  if (chat.pending) {
+    thread.append(el("div", { class: "bubble me", text: chat.pending }));
+    thread.append(el("div", { class: "bubble bot typing" }, el("span"), el("span"), el("span")));
+  }
+  box.append(thread);
+  if (!(data.chat || []).length && !chat.pending) {
+    box.append(el("div", { class: "suggest" }, SUGGESTIONS.map((q) =>
+      el("button", { text: q, onclick: () => askChat(q) }))));
+  }
+  const input = el("textarea", { rows: "1", maxlength: "1000", "aria-label": "Your question", placeholder: "Ask about your team…", disabled: !!chat.pending });
+  input.value = chat.draft;
+  const send = el("button", { class: "send", "aria-label": "Send", disabled: !chat.draft.trim() || !!chat.pending },
+    svg("svg", { viewBox: "0 0 24 24", "aria-hidden": "true" }, svg("path", { fill: "currentColor", d: "M3.4 20.4 21 12 3.4 3.6 3.4 10l12.6 2-12.6 2z" })));
+  const grow = () => { input.style.height = "auto"; input.style.height = Math.min(140, input.scrollHeight) + "px"; };
+  input.addEventListener("input", () => { chat.draft = input.value; send.disabled = !input.value.trim(); grow(); });
+  input.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey && input.value.trim()) { e.preventDefault(); askChat(input.value.trim()); } });
+  send.addEventListener("click", () => { const q = input.value.trim(); if (q) askChat(q); });
+  box.append(el("div", { class: "ask composer" }, input, send));
+  requestAnimationFrame(grow);
+  if (scroll) requestAnimationFrame(() => window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" }));
 }
 
 // "Add Name (RB, MIA), drop Other (WR) — bid $5" -> parts, when it has that shape.
@@ -352,7 +433,10 @@ function renderMoves() {
 
 function renderAsk(it) {
   const thread = it.thread || [];
-  if (!data.status.ask_enabled && !thread.length) return null;
+  if (!data.status.ask_enabled && !thread.length) {
+    return el("div", { class: "ask" }, el("button", { class: "ask-open", onclick: () => show("ask") },
+      icon("chat"), "Questions about this move? Turn them on"));
+  }
   const st = (asks[it.id] ||= { open: false, draft: "", pending: null });
   const box = el("div", { class: "ask" });
   for (const qa of thread) {
@@ -549,7 +633,7 @@ function show(tab) {
 }
 
 function skeletons() {
-  for (const id of ["moves", "matchup", "roster", "history"]) {
+  for (const id of ["moves", "matchup", "ask", "roster", "history"]) {
     $(id).replaceChildren(el("div", { class: "skeleton" }), el("div", { class: "skeleton short" }), el("div", { class: "skeleton short" }));
   }
 }

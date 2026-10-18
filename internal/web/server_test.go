@@ -28,6 +28,14 @@ func (f *fakeBackend) Snapshot() agent.Snapshot {
 	}
 }
 
+func (f *fakeBackend) AskAnything(_ context.Context, q string) (approval.QA, error) {
+	if f.fail != nil {
+		return approval.QA{}, f.fail
+	}
+	f.decided = append(f.decided, "chat:"+q)
+	return approval.QA{Question: q, Answer: "You're projected to win.", Via: "app"}, nil
+}
+
 func (f *fakeBackend) Ask(_ context.Context, id int, q string) (approval.QA, error) {
 	if f.fail != nil {
 		return approval.QA{}, f.fail
@@ -157,6 +165,33 @@ func TestAskEndpoint(t *testing.T) {
 	}
 	if w := post(`not json`, ok); w.Code != http.StatusBadRequest {
 		t.Errorf("bad body: %d", w.Code)
+	}
+	if w := post(`{"question":"`+strings.Repeat("a", 9000)+`"}`, ok); w.Code != http.StatusBadRequest {
+		t.Errorf("oversized body: %d", w.Code)
+	}
+}
+
+func TestAskAnythingEndpoint(t *testing.T) {
+	f := &fakeBackend{}
+	h := (&Server{Backend: f, Allowed: []string{owner}}).Handler()
+	post := func(body string, hdr map[string]string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest("POST", "https://box.tail1234.ts.net/api/ask", strings.NewReader(body))
+		for k, v := range hdr {
+			r.Header.Set(k, v)
+		}
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		return w
+	}
+	if w := post(`{"question":"am I winning?"}`, map[string]string{loginHeader: owner}); w.Code != http.StatusForbidden {
+		t.Errorf("without CSRF header: %d", w.Code)
+	}
+	ok := map[string]string{loginHeader: owner, csrfHeader: "1"}
+	if w := post(`{"question":"am I winning?"}`, ok); w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "projected to win") {
+		t.Fatalf("ask: %d %s", w.Code, w.Body)
+	}
+	if f.decided[0] != "chat:am I winning?" {
+		t.Errorf("backend got %v", f.decided)
 	}
 	if w := post(`{"question":"`+strings.Repeat("a", 9000)+`"}`, ok); w.Code != http.StatusBadRequest {
 		t.Errorf("oversized body: %d", w.Code)
