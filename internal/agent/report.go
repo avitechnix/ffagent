@@ -46,7 +46,7 @@ func PrintRoster(w io.Writer, p *Plan) {
 			v.SeasonAvg, v.RecentAvg, v.ROSValue, strings.Join(v.Notes, ", "))
 	}
 	tw.Flush()
-	fmt.Fprintln(w, "ESPN = ESPN projection; ADJ = adjusted for projection accuracy, injury, bye;")
+	fmt.Fprintln(w, "ESPN = ESPN projection; ADJ = agent's projection (ESPN's, updated for fresh injury news and byes);")
 	fmt.Fprintln(w, "ACC = actual/projected so far; L3 = last 3 games; ROS = rest-of-season points")
 	fmt.Fprintln(w)
 }

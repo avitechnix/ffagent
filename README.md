@@ -1,3 +1,5 @@
+<p align="center"><img src="docs/logo-wordmark.svg" alt="ffagent" width="420"></p>
+
 # ffagent — ESPN fantasy football team manager
 
 A Go agent that manages your ESPN fantasy football team. Each run it:

@@ -5,23 +5,27 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="ffagent">
-<meta name="theme-color" content="#f2f2f7" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#f3f5fa" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#070a12" media="(prefers-color-scheme: dark)">
 <title>ffagent</title>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icon-180.png">
-<link rel="icon" href="icon-192.png">
+<link rel="icon" href="logo.svg" type="image/svg+xml">
+<link rel="alternate icon" href="icon-192.png">
 <link rel="stylesheet" href="app.css">
 <script src="app.js" defer></script>
 </head>
 <body>
 <header class="top">
   <div class="top-row">
-    <div>
-      <h1 id="team">ffagent</h1>
-      <p id="subtitle" class="muted">Loading…</p>
+    <div class="brand">
+      <img class="logo" src="logo.svg" alt="" width="40" height="40">
+      <div class="brand-text">
+        <h1 id="team">ffagent</h1>
+        <div id="subtitle" class="chips"><span class="chip">Loading…</span></div>
+      </div>
     </div>
     <button id="refresh" class="icon-btn" aria-label="Refresh">
       <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M12 5V2L7 6l5 4V7a5 5 0 1 1-5 5H5a7 7 0 1 0 7-7z"/></svg>

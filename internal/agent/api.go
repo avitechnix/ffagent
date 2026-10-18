@@ -8,6 +8,7 @@ import (
 
 	"github.com/avitechnix/ffagent/internal/approval"
 	"github.com/avitechnix/ffagent/internal/espn"
+	"github.com/avitechnix/ffagent/internal/lineup"
 )
 
 // Snapshot is everything the phone app shows, copied out under the
@@ -18,6 +19,8 @@ type Snapshot struct {
 	History []AppItem  `json:"history"`
 	Roster  []AppRow   `json:"roster"`
 	Lineup  []AppStart `json:"lineup"`
+	// OppLineup is the opponent's lineup as set on ESPN.
+	OppLineup []AppStart `json:"opp_lineup,omitempty"`
 }
 
 // AppStatus is the header: team, matchup, and what the agent is doing.
@@ -36,6 +39,8 @@ type AppStatus struct {
 	PlannedAt    time.Time `json:"planned_at"`
 	Ready        bool      `json:"ready"` // false until the first plan is made
 	AskEnabled   bool      `json:"ask_enabled"`
+	MyActual     float64   `json:"my_actual"`  // starters' points so far
+	OppActual    float64   `json:"opp_actual"` // opponent starters' points so far
 }
 
 // AppItem is one proposed move and what happened to it.
@@ -83,13 +88,16 @@ type AppRow struct {
 	Notes    []string `json:"notes,omitempty"`
 }
 
-// AppStart is one starter in the recommended lineup.
+// AppStart is one starter in a lineup.
 type AppStart struct {
-	Slot   string  `json:"slot"`
-	Name   string  `json:"name"`
-	Team   string  `json:"team"`
-	Proj   float64 `json:"proj"`
-	Locked bool    `json:"locked"`
+	Slot     string  `json:"slot"`
+	Name     string  `json:"name"`
+	Position string  `json:"position"`
+	Team     string  `json:"team"`
+	Proj     float64 `json:"proj"`   // expected final points (live once his game starts)
+	Actual   float64 `json:"actual"` // points so far this week
+	Locked   bool    `json:"locked"` // game started
+	Left     float64 `json:"left"`   // fraction of his game still to play
 }
 
 // Snapshot returns the current state for the phone app.
@@ -158,20 +166,35 @@ func (w *Watcher) Snapshot() Snapshot {
 		s.Roster = append(s.Roster, row)
 	}
 	if p.Roster != nil {
-		for _, pl := range p.Roster.Roster {
-			slot, ok := p.Lineup.Slots[pl.ID]
-			if !ok || !espn.IsStartingSlot(slot) {
-				continue
-			}
-			proj := 0.0
-			if v := p.Values[pl.ID]; v != nil {
-				proj = v.WeekProjection
-			}
-			s.Lineup = append(s.Lineup, AppStart{Slot: espn.SlotName(slot), Name: pl.Name, Team: pl.ProTeam, Proj: proj, Locked: pl.Locked})
-		}
-		sort.SliceStable(s.Lineup, func(i, j int) bool { return lineupOrder(s.Lineup[i].Slot) < lineupOrder(s.Lineup[j].Slot) })
+		s.Lineup, s.Status.MyActual = starters(p, p.Roster.Roster, p.Lineup)
+	}
+	if m := p.Matchup; m != nil && m.Opponent != nil {
+		s.OppLineup, s.Status.OppActual = starters(p, m.Opponent.Roster, m.OppLineup)
 	}
 	return s
+}
+
+// starters lists a lineup's starters in slot order, with their points so far.
+func starters(p *Plan, roster []*espn.Player, a lineup.Assignment) ([]AppStart, float64) {
+	var out []AppStart
+	var actual float64
+	for _, pl := range roster {
+		slot, ok := a.Slots[pl.ID]
+		if !ok || !espn.IsStartingSlot(slot) {
+			continue
+		}
+		st := AppStart{Slot: espn.SlotName(slot), Name: pl.Name, Position: pl.Position, Team: pl.ProTeam, Locked: pl.Locked, Left: 1}
+		if v := p.Values[pl.ID]; v != nil {
+			st.Proj, st.Actual = v.WeekProjection, v.WeekActual
+		}
+		if pl.Locked {
+			st.Left = pl.GameLeft
+		}
+		actual += st.Actual
+		out = append(out, st)
+	}
+	sort.SliceStable(out, func(i, j int) bool { return lineupOrder(out[i].Slot) < lineupOrder(out[j].Slot) })
+	return out, actual
 }
 
 // Decide records your decision on a move from the phone app; approved
