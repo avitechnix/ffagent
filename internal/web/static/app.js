@@ -91,6 +91,68 @@ function posClass(slot, position) {
 }
 const slotChip = (slot, position) => el("span", { class: "slot " + posClass(slot, position), text: slot });
 
+// NFL team primary colors, for the backdrop behind player photos.
+const TEAM_COLORS = {
+  ARI: "#97233F", ATL: "#A71930", BAL: "#241773", BUF: "#00338D", CAR: "#0085CA", CHI: "#0B162A",
+  CIN: "#FB4F14", CLE: "#311D00", DAL: "#003594", DEN: "#FB4F14", DET: "#0076B6", GB: "#203731",
+  HOU: "#03202F", IND: "#002C5F", JAX: "#006778", KC: "#E31837", LV: "#1a1a1a", LAC: "#0080C6",
+  LAR: "#003594", MIA: "#008E97", MIN: "#4F2683", NE: "#002244", NO: "#9F8958", NYG: "#0B2265",
+  NYJ: "#125740", PHI: "#004C54", PIT: "#c99400", SF: "#AA0000", SEA: "#002244", TB: "#D50A0A",
+  TEN: "#0C2340", WSH: "#5A1414",
+};
+
+// Small NFL team logo, from the agent's image proxy.
+function teamLogo(abbr) {
+  if (!abbr || !TEAM_COLORS[abbr]) return null;
+  const img = el("img", { class: "tlogo", src: "img/t/" + abbr.toLowerCase() + ".png", alt: "", loading: "lazy", decoding: "async" });
+  img.addEventListener("error", () => img.remove());
+  return img;
+}
+
+function kickoff(iso) {
+  if (!iso || iso.startsWith("0001")) return "";
+  return new Date(iso).toLocaleString(undefined, { weekday: "short", hour: "numeric", minute: "2-digit" });
+}
+
+// "vs NYJ · Sun 12:00 PM", "@ GB · Sun 7:20 PM", "Bye week".
+function gameLine(p, withTime = true) {
+  if (!p.opp) return "";
+  if (p.opp === "BYE") return "Bye week";
+  const vs = p.opp.startsWith("@") ? "@ " + p.opp.slice(1) : "vs " + p.opp;
+  const t = withTime && !p.locked ? kickoff(p.kickoff) : "";
+  return t ? vs + " · " + t : vs;
+}
+
+// A fantasy team's logo (the one its manager picked on ESPN), with
+// initials until it loads or if there's none.
+function fantasyLogo(id, name) {
+  const initials = (name || "?").split(/\s+/).filter(Boolean).map((w) => w[0]).slice(0, 2).join("").toUpperCase();
+  const wrap = el("span", { class: "flogo" }, el("span", { class: "initials", text: initials }));
+  if (id) {
+    const img = el("img", { src: "img/f/" + id + ".png", alt: "", decoding: "async" });
+    img.addEventListener("load", () => wrap.classList.add("has-img"));
+    img.addEventListener("error", () => img.remove());
+    wrap.append(img);
+  }
+  return wrap;
+}
+
+// Counts a number up (or down) to its new value, like a scoreboard.
+const shown = {};
+function countTo(node, key, to) {
+  const from = shown[key] ?? to;
+  shown[key] = to;
+  node.textContent = fmt1(from);
+  if (from === to || matchMedia("(prefers-reduced-motion: reduce)").matches) { node.textContent = fmt1(to); return; }
+  const t0 = performance.now(), dur = 700;
+  const step = (t) => {
+    const k = Math.min(1, (t - t0) / dur), e = 1 - Math.pow(1 - k, 3);
+    node.textContent = fmt1(from + (to - from) * e);
+    if (k < 1) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+}
+
 // Player photo (team logo for a D/ST), served by the agent from ESPN's CDN.
 // Initials show until it loads, and stay if ESPN has no photo.
 function avatar(p, opts = {}) {
@@ -99,6 +161,8 @@ function avatar(p, opts = {}) {
   const src = dst ? (p.team ? "img/t/" + p.team.toLowerCase() + ".png" : null) : p.id > 0 ? "img/p/" + p.id + ".png" : null;
   const wrap = el("span", { class: "av " + posClass(opts.slot || p.position, p.position) + (dst ? " logo-av" : "") + (opts.small ? " sm" : "") },
     el("span", { class: "initials", text: initials }));
+  const tc = TEAM_COLORS[p.team];
+  if (tc && !dst) wrap.style.background = `radial-gradient(120% 90% at 50% 0%, color-mix(in srgb, ${tc} 55%, #fff) 0%, ${tc} 55%, color-mix(in srgb, ${tc} 70%, #000) 100%)`;
   if (src) {
     const img = el("img", { src, alt: "", loading: "lazy", decoding: "async" });
     img.addEventListener("load", () => wrap.classList.add("has-img"));
@@ -359,7 +423,7 @@ function playerCell(p, other, side) {
   const winning = other && p.proj > other.proj + 0.05;
   const info = el("div", { class: "pinfo" },
     el("span", { class: "pname", text: shortName(p) }),
-    el("span", { class: "sub" }, p.team || "", status),
+    el("span", { class: "sub" }, teamLogo(p.team), p.team || "", status || (p.opp ? el("span", { class: "game", text: gameLine(p) }) : null)),
     el("span", { class: "pts" },
       el("b", { text: fmt1(p.locked ? p.actual : p.proj) }),
       el("small", { text: p.locked ? (final ? "" : "proj " + fmt1(p.proj)) : "proj" })),
@@ -377,15 +441,28 @@ function renderMatchup() {
   const started = mine.some((p) => p.locked) || theirs.some((p) => p.locked);
 
   if (s.opponent) {
-    const side = (name, score, proj, cls) => el("div", { class: "side " + cls },
-      el("div", { class: "tname", text: name }),
-      el("div", { class: "score", text: fmt1(started ? score : proj) }),
-      el("div", { class: "proj", text: started ? "Proj " + fmt1(proj) : "Projected" }));
+    const side = (key, id, name, record, score, proj, cls) => {
+      const num = el("div", { class: "score" });
+      countTo(num, key, started ? score : proj);
+      return el("div", { class: "side " + cls },
+        fantasyLogo(id, name),
+        el("div", { class: "tname", text: name }),
+        record ? el("div", { class: "trec", text: record }) : null,
+        num,
+        el("div", { class: "proj", text: started ? "Proj " + fmt1(proj) : "Projected" }));
+    };
+    const total = Math.max(1, (s.my_projected || 0) + (s.opp_projected || 0));
+    const margin = (s.my_projected || 0) - (s.opp_projected || 0);
     box.append(el("div", { class: "card hero" },
       el("div", { class: "hero-teams" },
-        side(s.team, s.my_actual, s.my_projected, "left"),
+        side("me", s.my_team_id, s.team, s.record, s.my_actual, s.my_projected, "left"),
         ring(s.win_prob),
-        side(s.opponent, s.opp_actual, s.opp_projected, "right")),
+        side("opp", s.opp_team_id, s.opponent, s.opp_record, s.opp_actual, s.opp_projected, "right")),
+      el("div", { class: "margin" },
+        el("div", { class: "margin-bar" }, el("div", { style: { width: (100 * (s.my_projected || 0) / total).toFixed(1) + "%" } })),
+        el("div", { class: "margin-text" },
+          el("span", { text: margin >= 0 ? "Projected to win by " + fmt1(margin) : "Projected to lose by " + fmt1(-margin) }),
+          started ? el("span", { class: "live-dot", text: "Live" }) : null)),
       s.strategy ? el("p", { class: "hero-strategy", text: "Strategy: " + s.strategy }) : null));
   }
 
@@ -427,7 +504,8 @@ function renderRoster() {
         avatar(p, { slot: p.slot }),
         el("div", { class: "grow" },
           el("div", { class: "nm" }, p.name, p.injury ? el("span", { class: "tag inj", text: shortInjury(p.injury) }) : null),
-          el("div", { class: "sub", text: `${p.position} ${p.team} · avg ${fmt1(p.avg)} · last 3 ${fmt1(p.last3)}${acc}` }),
+          el("div", { class: "sub game-line" }, teamLogo(p.team), el("span", { class: "team-txt", text: `${p.position} · ${p.team}` }), p.opp ? el("span", { class: "game", text: gameLine(p) }) : null),
+          el("div", { class: "sub", text: `avg ${fmt1(p.avg)} · last 3 ${fmt1(p.last3)}${acc}` }),
           notes.length ? el("div", { class: "note", text: notes.join(" · ") }) : null,
           el("div", { class: "bar " + posClass(p.slot, p.position) }, el("div", { style: { width: Math.round(100 * (p.proj || 0) / max) + "%" } }))),
         el("div", { class: "val" },
@@ -476,7 +554,30 @@ function skeletons() {
   }
 }
 
+// Pull down at the top of the page to refresh, as in native apps.
+function pullToRefresh() {
+  const ptr = $("ptr");
+  let y0 = null, dy = 0;
+  window.addEventListener("touchstart", (e) => { y0 = window.scrollY <= 0 && !typing() ? e.touches[0].clientY : null; dy = 0; }, { passive: true });
+  window.addEventListener("touchmove", (e) => {
+    if (y0 === null) return;
+    dy = Math.max(0, e.touches[0].clientY - y0);
+    const pull = Math.min(90, dy * 0.5);
+    ptr.style.transform = `translate(-50%, ${pull - 50}px) rotate(${dy * 2}deg)`;
+    ptr.style.opacity = String(Math.min(1, dy / 100));
+    ptr.classList.toggle("ready", dy > 140);
+  }, { passive: true });
+  window.addEventListener("touchend", () => {
+    if (y0 !== null && dy > 140) load(true);
+    y0 = null;
+    ptr.style.transform = "";
+    ptr.style.opacity = "";
+    ptr.classList.remove("ready");
+  });
+}
+
 document.addEventListener("DOMContentLoaded", () => {
+  pullToRefresh();
   for (const b of document.querySelectorAll(".tabbar button")) b.addEventListener("click", () => show(b.dataset.tab));
   $("refresh").addEventListener("click", () => load(true));
   let saved = "moves";

@@ -16,7 +16,10 @@ import (
 type fakeBackend struct {
 	decided []string
 	fail    error
+	logos   map[int]string
 }
+
+func (f *fakeBackend) TeamLogo(id int) string { return f.logos[id] }
 
 func (f *fakeBackend) Snapshot() agent.Snapshot {
 	return agent.Snapshot{

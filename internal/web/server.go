@@ -29,6 +29,8 @@ type Backend interface {
 	Snapshot() agent.Snapshot
 	Decide(id int, approve bool) (agent.AppItem, error)
 	Ask(ctx context.Context, id int, question string) (approval.QA, error)
+	// TeamLogo returns the logo URL a fantasy team in the league chose.
+	TeamLogo(id int) string
 }
 
 // Server is the phone app's HTTP server.
@@ -58,6 +60,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/moves/{id}/{decision}", s.decide)
 	if s.Images == nil {
 		s.Images = &Images{}
+	}
+	if s.Images.TeamLogo == nil {
+		s.Images.TeamLogo = s.Backend.TeamLogo
 	}
 	mux.Handle("GET /img/{kind}/{key}", s.Images)
 	mux.Handle("GET /", http.FileServerFS(files))

@@ -529,6 +529,7 @@ type rawTeam struct {
 	Name         string   `json:"name"`
 	Location     string   `json:"location"`
 	Nickname     string   `json:"nickname"`
+	Logo         string   `json:"logo"`
 	Owners       []string `json:"owners"`
 	PrimaryOwner string   `json:"primaryOwner"`
 	WaiverRank   int      `json:"waiverRank"`
@@ -707,6 +708,7 @@ func (r rawLeague) toLeague() *League {
 			ID:         rt.ID,
 			Abbrev:     rt.Abbrev,
 			Name:       name,
+			Logo:       rt.Logo,
 			WaiverRank: rt.WaiverRank,
 			Wins:       rt.Record.Overall.Wins,
 			Losses:     rt.Record.Overall.Losses,
