@@ -50,15 +50,23 @@ type Options struct {
 	// AccuracyPriorWeeks is how many "phantom" weeks at 100% accuracy are
 	// blended in before trusting a player's projection history.
 	AccuracyPriorWeeks float64
-	// MinAccuracy and MaxAccuracy clamp the projection adjustment.
+	// MinAccuracy and MaxAccuracy clamp the projection adjustment. Both 1
+	// (the default) uses ESPN's projections as they are.
 	MinAccuracy, MaxAccuracy float64
 	// LongTermInjuryFactor scales ROS value for players on injured reserve.
 	LongTermInjuryFactor float64
 }
 
-// DefaultOptions are reasonable defaults.
+// DefaultOptions use ESPN's projections unadjusted.
 func DefaultOptions() Options {
-	return Options{AccuracyPriorWeeks: 8, MinAccuracy: 0.8, MaxAccuracy: 1.2, LongTermInjuryFactor: 0.45}
+	return Options{AccuracyPriorWeeks: 8, MinAccuracy: 1, MaxAccuracy: 1, LongTermInjuryFactor: 0.45}
+}
+
+// WithTrackRecord lets a player's record against ESPN's projections move
+// them by up to the given fraction (e.g. 0.2 for ±20%).
+func (o Options) WithTrackRecord(max float64) Options {
+	o.MinAccuracy, o.MaxAccuracy = 1-max, 1+max
+	return o
 }
 
 // positionCV is the typical weekly coefficient of variation by position,
@@ -82,6 +90,20 @@ func WeekInjuryFactor(status string) float64 {
 		return 0
 	case espn.InjuryDayToDay:
 		return 0.9
+	}
+	return 1
+}
+
+// weekInjuryAdjustment is how much of ESPN's weekly projection to keep given
+// the player's injury status. ESPN's projection already reflects ESPN's own
+// designation, so only fresher news from the injury report (or an OUT
+// player ESPN still projects) changes it. Without an ESPN projection, the
+// designation discounts the agent's own estimate.
+func weekInjuryAdjustment(p *espn.Player, hasProj bool) float64 {
+	st := p.EffectiveInjury()
+	f := WeekInjuryFactor(st)
+	if !hasProj || f == 0 || (p.NewsStatus != "" && p.NewsStatus != p.InjuryStatus) {
+		return f
 	}
 	return 1
 }
@@ -121,6 +143,14 @@ func Value(l *espn.League, p *espn.Player, o Options) *Valuation {
 			continue // didn't play (bye/inactive/injured): not a game played
 		}
 		v.WeeklyActuals = append(v.WeeklyActuals, act)
+		if !okP || proj <= 0 {
+			// The league didn't return this week's projection: compare
+			// with ESPN's default-scoring actual and projection instead,
+			// which are consistent with each other.
+			if ra, rp, ok := p.RefWeek(season, w); ok && rp > 0 {
+				act, proj, okP = ra, rp, true
+			}
+		}
 		if okP && proj > 0 {
 			v.ActualTotal += act
 			v.ProjectedTotal += proj
@@ -196,7 +226,7 @@ func Value(l *espn.League, p *espn.Player, o Options) *Valuation {
 	if v.OnBye {
 		v.WeekProjection = 0
 	} else {
-		v.WeekProjection = base * v.AccuracyFactor * v.InjuryFactor
+		v.WeekProjection = base * v.AccuracyFactor * weekInjuryAdjustment(p, hasProj)
 	}
 	if act, ok := p.WeekActual(season, week); ok && p.Locked {
 		// Game is underway or done: treat banked points as the expectation.

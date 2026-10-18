@@ -345,6 +345,10 @@ of the unattended options under [Storing credentials](#storing-credentials-encry
   The one exception is a "next man up" whose starter was just ruled out, since ESPN is
   slow to raise those. Set it to `true` to allow rest-of-season stashes, e.g. a player
   on bye this week.
+- `track_record_adjustment` (default `0`): this week's projections are ESPN's own,
+  changed only by injury news ESPN hasn't caught up on yet. Set this to a fraction,
+  e.g. `0.1`, to let each player's record against ESPN's projections this season move
+  them by up to ±10%.
 - `this_week_weight`: how much this week's matchup counts compared with a future week.
   Raise it to chase this week's win harder.
 - `max_faab_fraction`: the most of your remaining budget one claim can use.

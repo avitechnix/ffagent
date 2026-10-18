@@ -250,7 +250,7 @@ function renderRoster() {
   if (!data.roster || !data.roster.length) return box.append(empty("No roster yet", "Waiting for the agent's first check."));
   const ul = el("ul", { class: "list" });
   for (const p of data.roster) {
-    const acc = p.accuracy ? " · " + pct(p.accuracy) + " of ESPN proj" : "";
+    const acc = p.accuracy ? ` · ${pct(p.accuracy)} of ESPN proj (${p.acc_weeks} wk${p.acc_weeks === 1 ? "" : "s"})` : "";
     const notes = (p.notes || []).filter((n) => n !== p.injury);
     ul.append(el("li", {},
       el("span", { class: "slot", text: p.slot }),
@@ -261,7 +261,7 @@ function renderRoster() {
       el("div", { class: "num" }, fmt1(p.proj), el("small", { text: Math.round(p.ros) + " ROS" }))));
   }
   box.append(el("h2", { class: "section-title", text: "This week · rest of season" }), el("div", { class: "card" }, ul));
-  box.append(el("p", { class: "muted small center", text: "Projections adjusted for each player's record against ESPN's, injuries and byes." }));
+  box.append(el("p", { class: "muted small center", text: "This week's projections are ESPN's, updated for injury news ESPN hasn't caught up on." }));
 }
 
 function renderHistory() {

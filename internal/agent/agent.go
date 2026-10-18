@@ -48,7 +48,8 @@ type Agent struct {
 
 // New returns an agent with default valuation options.
 func New(c ESPN, cfg config.Config) *Agent {
-	return &Agent{ESPN: c, Cfg: cfg, Opts: analysis.DefaultOptions(), Now: time.Now}
+	opts := analysis.DefaultOptions().WithTrackRecord(min(max(cfg.TrackRecordAdjustment, 0), 0.5))
+	return &Agent{ESPN: c, Cfg: cfg, Opts: opts, Now: time.Now}
 }
 
 // ActionKind classifies a planned action.
