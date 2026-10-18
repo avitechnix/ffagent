@@ -1,0 +1,77 @@
+package web
+
+import (
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"sync/atomic"
+	"testing"
+)
+
+func TestImageProxy(t *testing.T) {
+	var hits atomic.Int32
+	cdn := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		img := r.URL.Query().Get("img")
+		switch {
+		case img == "/i/headshots/nfl/players/full/4241389.png", img == "/i/teamlogos/nfl/500/jax.png":
+			w.Header().Set("Content-Type", "image/png")
+			io.WriteString(w, "\x89PNG fake")
+		case img == "/i/headshots/nfl/players/full/77.png":
+			w.Header().Set("Content-Type", "text/html")
+			io.WriteString(w, "<script>alert(1)</script>")
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer cdn.Close()
+
+	srv := &Server{Backend: &fakeBackend{}, Allowed: []string{"me@example.com"}, Images: &Images{Base: cdn.URL}}
+	h := srv.Handler()
+	get := func(path string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest("GET", path, nil)
+		r.Header.Set(loginHeader, "me@example.com")
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		return w
+	}
+
+	w := get("/img/p/4241389.png")
+	if w.Code != 200 || w.Header().Get("Content-Type") != "image/png" || !strings.HasPrefix(w.Body.String(), "\x89PNG") {
+		t.Fatalf("headshot: %d %q", w.Code, w.Header().Get("Content-Type"))
+	}
+	if !strings.Contains(w.Header().Get("Cache-Control"), "max-age") || w.Header().Get("Content-Security-Policy") == "" {
+		t.Errorf("headers: %v", w.Header())
+	}
+	get("/img/p/4241389.png")
+	if hits.Load() != 1 {
+		t.Errorf("second request wasn't cached: %d CDN hits", hits.Load())
+	}
+	if w := get("/img/t/JAX.png"); w.Code != 200 {
+		t.Errorf("team logo: %d", w.Code)
+	}
+	if w := get("/img/p/999.png"); w.Code != 404 {
+		t.Errorf("missing headshot: %d", w.Code)
+	}
+	if w := get("/img/p/77.png"); w.Code != 502 {
+		t.Errorf("non-image served: %d", w.Code)
+	}
+	// Only player IDs and team abbreviations: nothing else reaches the CDN.
+	before := hits.Load()
+	for _, p := range []string{"/img/p/-16030.png", "/img/p/..%2fetc.png", "/img/t/j%26x.png", "/img/x/1.png", "/img/t/toolong.png"} {
+		if w := get(p); w.Code != 404 {
+			t.Errorf("%s: %d, want 404", p, w.Code)
+		}
+	}
+	if hits.Load() != before {
+		t.Errorf("rejected paths reached the CDN")
+	}
+	// The usual login check applies.
+	r := httptest.NewRequest("GET", "/img/p/4241389.png", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, r)
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("no login: %d", rec.Code)
+	}
+}

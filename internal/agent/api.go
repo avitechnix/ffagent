@@ -59,7 +59,8 @@ type AppItem struct {
 	Expires time.Time `json:"expires,omitempty"`
 	Decided time.Time `json:"decided,omitempty"`
 	Via     string    `json:"via,omitempty"`
-	Thread  []AppQA   `json:"thread,omitempty"` // follow-up questions about this move
+	Thread  []AppQA   `json:"thread,omitempty"`  // follow-up questions about this move
+	Players []int     `json:"players,omitempty"` // ESPN IDs in the move, in transaction order (added before dropped)
 }
 
 // AppQA is one follow-up question and Claude's answer.
@@ -72,6 +73,7 @@ type AppQA struct {
 
 // AppRow is one roster player's analysis.
 type AppRow struct {
+	ID       int      `json:"id"` // ESPN player ID (negative for a D/ST)
 	Slot     string   `json:"slot"`
 	Name     string   `json:"name"`
 	Position string   `json:"position"`
@@ -90,6 +92,7 @@ type AppRow struct {
 
 // AppStart is one starter in a lineup.
 type AppStart struct {
+	ID       int     `json:"id"`
 	Slot     string  `json:"slot"`
 	Name     string  `json:"name"`
 	Position string  `json:"position"`
@@ -153,7 +156,7 @@ func (w *Watcher) Snapshot() Snapshot {
 			continue
 		}
 		row := AppRow{
-			Slot: espn.SlotName(pl.LineupSlot), Name: pl.Name, Position: pl.Position, Team: pl.ProTeam,
+			ID: pl.ID, Slot: espn.SlotName(pl.LineupSlot), Name: pl.Name, Position: pl.Position, Team: pl.ProTeam,
 			ESPN: v.ESPNWeekProjection, Proj: v.WeekProjection, StdDev: v.WeekStdDev,
 			Avg: v.SeasonAvg, Last3: v.RecentAvg, ROS: v.ROSValue, Notes: v.Notes,
 		}
@@ -183,7 +186,7 @@ func starters(p *Plan, roster []*espn.Player, a lineup.Assignment) ([]AppStart, 
 		if !ok || !espn.IsStartingSlot(slot) {
 			continue
 		}
-		st := AppStart{Slot: espn.SlotName(slot), Name: pl.Name, Position: pl.Position, Team: pl.ProTeam, Locked: pl.Locked, Left: 1}
+		st := AppStart{ID: pl.ID, Slot: espn.SlotName(slot), Name: pl.Name, Position: pl.Position, Team: pl.ProTeam, Locked: pl.Locked, Left: 1}
 		if v := p.Values[pl.ID]; v != nil {
 			st.Proj, st.Actual = v.WeekProjection, v.WeekActual
 		}
@@ -224,7 +227,7 @@ func appItem(st *approval.Store, it *approval.Item) AppItem {
 	a := AppItem{
 		ID: it.ID, Number: it.Number, Batch: it.Batch, Kind: it.Kind, Label: kindLabel(it.Kind),
 		Summary: it.Summary, Reason: it.Reason, Status: string(it.Status), Result: it.Result,
-		Created: it.Created, Expires: it.Expires, Decided: it.Decided, Via: it.Via,
+		Created: it.Created, Expires: it.Expires, Decided: it.Decided, Via: it.Via, Players: it.Players,
 	}
 	for _, id := range it.Depends {
 		if d := st.Item(id); d != nil {

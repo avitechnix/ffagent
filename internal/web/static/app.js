@@ -91,6 +91,25 @@ function posClass(slot, position) {
 }
 const slotChip = (slot, position) => el("span", { class: "slot " + posClass(slot, position), text: slot });
 
+// Player photo (team logo for a D/ST), served by the agent from ESPN's CDN.
+// Initials show until it loads, and stay if ESPN has no photo.
+function avatar(p, opts = {}) {
+  const initials = (p.name || "?").replace(/ D\/ST$/, "").split(/\s+/).map((w) => w[0]).slice(0, 2).join("").toUpperCase();
+  const dst = p.position === "D/ST" || p.id < 0;
+  const src = dst ? (p.team ? "img/t/" + p.team.toLowerCase() + ".png" : null) : p.id > 0 ? "img/p/" + p.id + ".png" : null;
+  const wrap = el("span", { class: "av " + posClass(opts.slot || p.position, p.position) + (dst ? " logo-av" : "") + (opts.small ? " sm" : "") },
+    el("span", { class: "initials", text: initials }));
+  if (src) {
+    const img = el("img", { src, alt: "", loading: "lazy", decoding: "async" });
+    img.addEventListener("load", () => wrap.classList.add("has-img"));
+    img.addEventListener("error", () => img.remove());
+    wrap.append(img);
+  }
+  if (opts.badge) wrap.append(el("span", { class: "av-badge " + opts.badge.cls, text: opts.badge.text }));
+  if (opts.slot) wrap.append(el("span", { class: "av-slot", text: opts.slot }));
+  return wrap;
+}
+
 function shortInjury(s) {
   return { INJURY_RESERVE: "IR", QUESTIONABLE: "Q", DOUBTFUL: "D", OUT: "OUT", SUSPENSION: "SUSP", DAY_TO_DAY: "DTD" }[s] || s;
 }
@@ -235,11 +254,16 @@ function renderMoves() {
     declineBtn.addEventListener("click", () => decide(it, false, both));
 
     const swap = parseSwap(it.summary);
+    const ids = it.players || [];
+    const who = (part, id, sign) => {
+      const [pos, team] = (part.meta || "").split(", ");
+      return avatar({ id, name: part.name, position: pos, team }, { small: true, badge: { cls: sign === "+" ? "in" : "out", text: sign } });
+    };
     const body = swap
       ? el("div", { class: "swap" },
-          el("div", { class: "swap-row in" }, el("span", { class: "sign", text: "+" }),
+          el("div", { class: "swap-row in" }, who(swap.add, ids[0], "+"),
             el("span", { class: "who", text: swap.add.name }), el("span", { class: "meta", text: swap.add.meta })),
-          swap.drop ? el("div", { class: "swap-row out" }, el("span", { class: "sign", text: "−" }),
+          swap.drop ? el("div", { class: "swap-row out" }, who(swap.drop, ids[1], "−"),
             el("span", { class: "who", text: swap.drop.name }), el("span", { class: "meta", text: swap.drop.meta })) : null,
           swap.bid ? el("span", { class: "bid", text: "FAAB bid $" + swap.bid }) : null)
       : el("h3", { text: it.summary });
@@ -317,6 +341,14 @@ function pairLineups(mine, theirs) {
   return rows;
 }
 
+// "B. Allen", the way ESPN fits names next to photos; "Jaguars" for a D/ST.
+function shortName(p) {
+  if (p.position === "D/ST") return (p.name || "").replace(/ D\/ST$/, "");
+  const parts = (p.name || "").split(" ");
+  if (parts.length < 2) return p.name || "";
+  return parts[0][0] + ". " + parts.slice(1).join(" ");
+}
+
 function playerCell(p, other, side) {
   if (!p) return el("div", { class: "pl " + side }, el("span", { class: "empty-slot", text: "Empty" }));
   const final = p.locked && p.left <= 0;
@@ -325,13 +357,15 @@ function playerCell(p, other, side) {
   // Highlight whoever is projected to win the slot: on the big number before
   // kickoff, on the projection once points are coming in.
   const winning = other && p.proj > other.proj + 0.05;
-  return el("div", { class: "pl " + side + (winning ? (p.locked ? " win-live" : " win-proj") : "") },
-    el("span", { class: "pname", text: p.name }),
+  const info = el("div", { class: "pinfo" },
+    el("span", { class: "pname", text: shortName(p) }),
     el("span", { class: "sub" }, p.team || "", status),
     el("span", { class: "pts" },
       el("b", { text: fmt1(p.locked ? p.actual : p.proj) }),
       el("small", { text: p.locked ? (final ? "" : "proj " + fmt1(p.proj)) : "proj" })),
     live ? el("div", { class: "progress" }, el("div", { style: { width: Math.round((1 - p.left) * 100) + "%" } })) : null);
+  return el("div", { class: "pl " + side + (winning ? (p.locked ? " win-live" : " win-proj") : "") },
+    avatar(p, { small: true }), info);
 }
 
 function renderMatchup() {
@@ -390,7 +424,7 @@ function renderRoster() {
       const notes = (p.notes || []).filter((n) => n !== p.injury);
       const differs = Math.abs((p.espn || 0) - (p.proj || 0)) > 0.05;
       ul.append(el("li", {},
-        slotChip(p.slot, p.position),
+        avatar(p, { slot: p.slot }),
         el("div", { class: "grow" },
           el("div", { class: "nm" }, p.name, p.injury ? el("span", { class: "tag inj", text: shortInjury(p.injury) }) : null),
           el("div", { class: "sub", text: `${p.position} ${p.team} · avg ${fmt1(p.avg)} · last 3 ${fmt1(p.last3)}${acc}` }),
