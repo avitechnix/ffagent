@@ -300,9 +300,11 @@ Every interval, the watcher:
 3. **Re-plans right away** when anything changed, and otherwise at least hourly.
    - **Breaking news first.** The fresh status updates projections and the lineup
      before ESPN Fantasy's projections catch up.
-   - **Next man up.** When a starter goes OUT or to IR, his same-team backup gets a
-     share of the lost production: QB 90%, RB 55%, TE 45%, WR 30% per game. The boost
-     covers the expected games missed (IR means at least 4). The agent also searches
+   - **Next man up.** When a starter goes OUT or to IR, his same-team backup is
+     expected to score at least a share of the starter's production: QB 75%, RB 55%,
+     TE 45%, WR 30% per game. This is a floor, not a bonus: once ESPN has raised the
+     backup's projection, nothing more is added. It covers the expected games missed
+     (IR means at least 4). The agent also searches
      free agents on that NFL team specifically, so a low-owned backup still gets
      found.
 4. **Asks you.** The proposed moves are emailed to you right away. With

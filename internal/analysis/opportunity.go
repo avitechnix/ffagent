@@ -21,8 +21,8 @@ type Injury struct {
 }
 
 // opportunityShare is roughly how much of an injured starter's production
-// flows to the next player up at the same position.
-var opportunityShare = map[string]float64{"QB": 0.9, "RB": 0.55, "TE": 0.45, "WR": 0.3}
+// the next player up at the same position can be expected to score.
+var opportunityShare = map[string]float64{"QB": 0.75, "RB": 0.55, "TE": 0.45, "WR": 0.3}
 
 // gamesMissed is a conservative estimate of games lost for a designation.
 func gamesMissed(status string) float64 {
@@ -84,12 +84,26 @@ func ApplyOpportunity(l *espn.League, players []*espn.Player, vals map[int]*Valu
 		if next == nil {
 			continue
 		}
-		gain := share * hurtV.PerGame
-		next.OpportunityBoost += gain
+		// The opportunity sets a floor on what the backup is expected to
+		// score; it doesn't add to it. When ESPN has already raised his
+		// projection (it often does within a day), there's nothing to add,
+		// and adding anyway would count the same snaps twice.
+		floor := share * hurtV.PerGame
+		lift := 0.0
 		if !next.OnBye {
-			next.WeekProjection += gain * next.InjuryFactor
+			if f := floor * next.InjuryFactor; f > next.WeekProjection {
+				lift = f - next.WeekProjection
+				next.WeekProjection = f
+			}
 		}
-		next.ROSValue += gain * missed
-		next.Notes = append(next.Notes, fmt.Sprintf("%s is %s, so he's next man up (+%.1f pts/wk)", hurt.Name, inj.Status, gain))
+		if extra := floor - next.PerGame; extra > 0 {
+			next.ROSValue += extra * missed
+			lift = max(lift, extra)
+		}
+		if lift <= 0 {
+			continue // ESPN's numbers already reflect the new role
+		}
+		next.OpportunityBoost += lift
+		next.Notes = append(next.Notes, fmt.Sprintf("%s is %s, so he's next man up (about %.1f pts/wk)", hurt.Name, inj.Status, floor))
 	}
 }

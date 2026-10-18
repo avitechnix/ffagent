@@ -358,3 +358,33 @@ func TestPickupNeverProjectsLowerThanItsDrop(t *testing.T) {
 		t.Error("allow_lower_week_pickups should permit a rest-of-season stash")
 	}
 }
+
+func TestUnderdogDoesNotStartAFarLowerProjection(t *testing.T) {
+	nextID = 600
+	starter := mk("Drake Starter", "QB", espn.SlotQB, 19)
+	boom := mk("Boom Backup", "QB", espn.SlotBench, 14)
+	boom.Stats = nil
+	for w, act := range []float64{40, 0, 35, 0, 2} {
+		boom.Stats = append(boom.Stats,
+			espn.StatLine{Season: season, Week: w + 1, Weekly: true, Projected: true, Points: 14},
+			espn.StatLine{Season: season, Week: w + 1, Weekly: true, Points: act})
+	}
+	boom.Stats = append(boom.Stats, espn.StatLine{Season: season, Week: week, Weekly: true, Projected: true, Points: 14})
+	me := team(1, "Me", starter, boom, mk("WR", "WR", espn.SlotWR, 10))
+	opp := team(2, "Juggernaut", mk("Opp QB", "QB", espn.SlotQB, 45), mk("Opp WR", "WR", espn.SlotWR, 25))
+	f := &fakeESPN{league: func() *espn.League {
+		return &espn.League{
+			ID: 1, Season: season, CurrentWeek: week, CurrentMatchupPeriod: week, FinalWeek: 17,
+			LineupSlotCounts: map[int]int{espn.SlotQB: 1, espn.SlotWR: 1, espn.SlotBench: 3},
+			Teams:            []*espn.Team{me.Clone(), opp.Clone()},
+			Schedule:         []espn.Matchup{{Period: week, HomeTeamID: 1, AwayTeamID: 2}},
+		}
+	}}
+	p, err := testAgent(f).PlanLineup(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Lineup.Slots[starter.ID] != espn.SlotQB {
+		t.Errorf("benched a 19-point QB for a 14-point boom/bust backup (lambda %v)", p.Matchup.Lambda)
+	}
+}

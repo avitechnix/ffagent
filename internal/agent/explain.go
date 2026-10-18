@@ -17,7 +17,7 @@ import (
 // "why" behind numbers without inventing a method.
 const methodology = `HOW THE AGENT DECIDES
 - Projections start from ESPN's, then are scaled by each player's track record against ESPN's projections (shrunk toward 100% until there are several games, and capped at 80%-120%), by injury status (Questionable ~85%, Doubtful ~20%, Out/IR 0%), and by byes.
-- When a starter is newly ruled OUT or to IR (report under 48 hours old), his healthiest same-team backup gets a share of the lost production: QB 90%, RB 55%, TE 45%, WR 30% per game.
+- When a starter is newly ruled OUT or to IR (report under 48 hours old), his healthiest same-team backup is expected to score at least a share of the starter's production: QB 75%, RB 55%, TE 45%, WR 30% per game. It's a floor, not a bonus: if ESPN has already raised the backup's projection above it, nothing is added.
 - Expected points per game for the rest of the season are anchored on ESPN's projections (this week's when healthy, blended with the season projection, adjusted for track record); actual production is blended in but never outweighs them. Games a player missed don't count as games played.
 - A pickup is never proposed if the added player projects fewer points this week than the player dropped (by ESPN or by the agent), unless he's a fresh "next man up" or the manager set allow_lower_week_pickups.
 - "Team value" = (best lineup's expected points this week x 2) + (best rest-of-season lineup x remaining weeks) + 15% credit for bench depth. A pickup or trade is proposed only if it raises team value by enough (default 5 points for pickups, 8 for trades).
