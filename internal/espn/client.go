@@ -502,7 +502,9 @@ type rawLeague struct {
 			IsUsingAcquisitionBudget bool `json:"isUsingAcquisitionBudget"`
 		} `json:"acquisitionSettings"`
 		ScheduleSettings struct {
-			MatchupPeriods map[string][]int `json:"matchupPeriods"`
+			MatchupPeriods     map[string][]int `json:"matchupPeriods"`
+			MatchupPeriodCount int              `json:"matchupPeriodCount"` // regular season
+			PlayoffTeamCount   int              `json:"playoffTeamCount"`
 		} `json:"scheduleSettings"`
 	} `json:"settings"`
 	Members []struct {
@@ -674,6 +676,8 @@ func (r rawLeague) toLeague() *League {
 		FinalWeek:            r.Status.FinalScoringPeriod,
 		LineupSlotCounts:     map[int]int{},
 		MatchupPeriods:       map[int][]int{},
+		RegularSeason:        r.Settings.ScheduleSettings.MatchupPeriodCount,
+		PlayoffTeams:         r.Settings.ScheduleSettings.PlayoffTeamCount,
 		UsesFAAB:             r.Settings.AcquisitionSettings.IsUsingAcquisitionBudget,
 		FAABBudget:           r.Settings.AcquisitionSettings.AcquisitionBudget,
 		Members:              map[string]string{},

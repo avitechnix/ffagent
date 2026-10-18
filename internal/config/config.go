@@ -45,6 +45,14 @@ type Config struct {
 	// ThisWeekWeight is how much more this week's matchup counts than any
 	// single future week when valuing roster moves.
 	ThisWeekWeight float64 `json:"this_week_weight"`
+	// PlayoffWeekWeight is how much a fantasy-playoff week counts compared
+	// with a regular-season week when valuing roster moves.
+	PlayoffWeekWeight float64 `json:"playoff_week_weight"`
+	// PlanStashes lets a pickup project fewer points this week than the
+	// player it drops when this week's lineup is unchanged (the dropped
+	// player wasn't starting) and he's worth clearly more later, e.g. a
+	// player back from IR in time for the playoffs.
+	PlanStashes bool `json:"plan_stashes"`
 	// TrackRecordAdjustment lets a player's record against ESPN's
 	// projections this season move his projection by up to this fraction
 	// (0.2 = ±20%). 0, the default, uses ESPN's projections as they are.
@@ -152,6 +160,8 @@ func Default() Config {
 		FreeAgentsPerPosition: 25,
 		MaxFAABFraction:       0.35,
 		ThisWeekWeight:        2,
+		PlayoffWeekWeight:     1.25,
+		PlanStashes:           true,
 		BenchDepthWeight:      0.15,
 		RiskAware:             true,
 		NewsFreshHours:        48,

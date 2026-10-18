@@ -2,6 +2,7 @@ package agent
 
 import (
 	"fmt"
+	"math"
 	"sort"
 	"strings"
 	"time"
@@ -39,6 +40,10 @@ func (s *state) findTrades(me *espn.Team) []TradeIdea {
 		}
 	}
 	myBase := s.teamValue(me.Roster, 0)
+	myQuick := s.quickValue(me.Roster)
+	// The quick screen can be off by a few points from the week-by-week
+	// value (byes), so it only drops trades well short of the bar.
+	screen := func(g, bar float64) bool { return g >= bar-max(5, 0.5*math.Abs(bar)) }
 
 	var ideas []TradeIdea
 	for _, o := range s.l.Teams {
@@ -51,18 +56,28 @@ func (s *state) findTrades(me *espn.Team) []TradeIdea {
 				theirs = append(theirs, p)
 			}
 		}
-		theirBase := s.teamValue(o.Roster, 0)
+		theirQuick := s.quickValue(o.Roster)
+		theirBase, haveBase := 0.0, false
 		for _, give := range combos(mine, 2) {
 			for _, get := range combos(theirs, 2) {
 				if len(give) == 2 && len(get) == 2 {
 					continue
 				}
 				myAfter := s.trim(swap(me.Roster, give, get), get)
+				if !screen(s.quickValue(myAfter)-myQuick, cfg.MinTradeGain) {
+					continue
+				}
+				theirAfter := s.trim(swap(o.Roster, get, give), give)
+				if !screen(s.quickValue(theirAfter)-theirQuick, -cfg.TradeTolerance) {
+					continue
+				}
 				myGain := s.teamValue(myAfter, 0) - myBase
 				if myGain < cfg.MinTradeGain {
 					continue
 				}
-				theirAfter := s.trim(swap(o.Roster, get, give), give)
+				if !haveBase {
+					theirBase, haveBase = s.teamValue(o.Roster, 0), true
+				}
 				theirGain := s.teamValue(theirAfter, 0) - theirBase
 				if theirGain < -cfg.TradeTolerance {
 					continue

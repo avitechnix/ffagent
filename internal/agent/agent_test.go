@@ -327,7 +327,10 @@ func contains(xs []int, v int) bool {
 	return false
 }
 
-func TestPickupNeverProjectsLowerThanItsDrop(t *testing.T) {
+// A pickup that projects fewer points this week than his drop is only
+// made as a stash: the dropped player isn't in this week's lineup, so this
+// week's score can't fall.
+func TestPickupProjectsLowerOnlyAsAStash(t *testing.T) {
 	f, _ := scenario()
 	stash := freeAgent(mk("Bye Stash WR", "WR", espn.SlotBench, 16), espn.StatusFreeAgent)
 	f.pool = append(f.pool, stash)
@@ -337,25 +340,50 @@ func TestPickupNeverProjectsLowerThanItsDrop(t *testing.T) {
 		l.ByeWeeks[stash.ProTeamID] = week // great rest of season, 0 points this week
 		return l
 	}
-	adds := func(a *Agent) bool {
+	plan := func(a *Agent) (*Plan, *Action) {
 		p, err := a.Plan(context.Background())
 		if err != nil {
 			t.Fatal(err)
 		}
-		for _, act := range p.Actions {
+		for i, act := range p.Actions {
 			if strings.Contains(act.Summary, "Bye Stash WR") {
-				return true
+				return p, &p.Actions[i]
 			}
 		}
-		return false
+		return p, nil
 	}
-	if adds(testAgent(f)) {
-		t.Error("proposed a pickup that scores fewer points this week than the player it drops")
+
+	p, act := plan(testAgent(f))
+	if act == nil {
+		t.Fatal("no stash of a 16-point WR on bye for a bench player")
 	}
+	if !strings.HasPrefix(act.Summary, "Stash Bye Stash WR") || !strings.Contains(act.Reason, "this week's projection doesn't change") {
+		t.Errorf("stash isn't labeled and explained: %s — %s", act.Summary, act.Reason)
+	}
+	for _, x := range act.Txn.Items {
+		if x.Type == espn.ItemDrop {
+			if d := findByID(p.Me.Roster, x.PlayerID); d == nil || d.LineupSlot != espn.SlotBench {
+				t.Errorf("stash drops a player in this week's lineup")
+			}
+		}
+	}
+
+	// With every bench player protected, a stash would have to drop a
+	// starter, and this week's score would fall.
 	a := testAgent(f)
+	a.Cfg.ProtectedPlayers = []string{"RB Bench", "WR Bench", "TE Bench", "QB Bench", "WR Scrub", "RB Scrub", "DST Bench"}
+	if _, act := plan(a); act != nil {
+		t.Errorf("stashed by dropping a starter: %s", act.Summary)
+	}
+
+	a = testAgent(f)
+	a.Cfg.PlanStashes = false
+	if _, act := plan(a); act != nil {
+		t.Errorf("stashed with plan_stashes off: %s", act.Summary)
+	}
 	a.Cfg.AllowLowerWeekPickups = true
-	if !adds(a) {
-		t.Error("allow_lower_week_pickups should permit a rest-of-season stash")
+	if _, act := plan(a); act == nil {
+		t.Error("allow_lower_week_pickups should permit a rest-of-season pickup")
 	}
 }
 

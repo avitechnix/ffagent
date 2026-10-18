@@ -13,6 +13,8 @@
   "max_faab_fraction": 0.35,
 
   "this_week_weight": 2,
+  "playoff_week_weight": 1.25,
+  "plan_stashes": true,
   "track_record_adjustment": 0,
   "bench_depth_weight": 0.15,
   "risk_aware": true,
