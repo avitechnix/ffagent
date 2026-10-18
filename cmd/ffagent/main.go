@@ -48,6 +48,8 @@ Commands:
                  moves with their rationale, and run the ones you approve by
                  replying (approval_mode "email", the default)
   email-test     Send a test email and check the agent can read replies
+  backtest       Check whether Vegas lines or defense-vs-position would have
+                 made ESPN's projections more accurate this season
   secrets set    Store your ESPN cookies in the encrypted vault (hidden input)
   secrets set email   Store the email account's app password
   secrets set anthropic  Store an Anthropic API key (for follow-up questions)
@@ -150,7 +152,7 @@ func main() {
 		}
 		ag.Confirm = confirmInTerminal(os.Stdin, out)
 	}
-	if cmd != "watch" && cmd != "free-agents" && cmd != "email-test" {
+	if cmd != "watch" && cmd != "free-agents" && cmd != "email-test" && cmd != "backtest" {
 		loadInjuries(ctx, ag, newsClient)
 	}
 
@@ -243,6 +245,10 @@ func main() {
 		}
 	case "free-agents":
 		freeAgents(ctx, client, ag, *pos, *limit, out)
+	case "backtest":
+		if err := backtest(ctx, client, out); err != nil {
+			fatal(err)
+		}
 	case "run":
 		for {
 			runOnce(ctx, ag, *apply, cfg.ProposeTrades, out)

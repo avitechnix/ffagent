@@ -177,6 +177,7 @@ type Matchup struct {
 
 // ProGame is one NFL game.
 type ProGame struct {
+	ID     int // ESPN game (event) ID
 	Week   int
 	Start  time.Time
 	HomeID int
