@@ -338,6 +338,11 @@ of the unattended options under [Storing credentials](#storing-credentials-encry
 - `protected_players`: names or ESPN IDs that are never dropped or traded.
 - `ir_eligible_statuses`: match your league's IR rules.
 - `max_acquisitions_per_run` and `min_pickup_gain`: how aggressive to be on the wire.
+- `allow_lower_week_pickups` (default `false`): a pickup must project at least as many
+  points this week as the player it drops, by both ESPN's projection and the agent's.
+  The one exception is a "next man up" whose starter was just ruled out, since ESPN is
+  slow to raise those. Set it to `true` to allow rest-of-season stashes, e.g. a player
+  on bye this week.
 - `this_week_weight`: how much this week's matchup counts compared with a future week.
   Raise it to chase this week's win harder.
 - `max_faab_fraction`: the most of your remaining budget one claim can use.

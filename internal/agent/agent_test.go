@@ -326,3 +326,35 @@ func contains(xs []int, v int) bool {
 	}
 	return false
 }
+
+func TestPickupNeverProjectsLowerThanItsDrop(t *testing.T) {
+	f, _ := scenario()
+	stash := freeAgent(mk("Bye Stash WR", "WR", espn.SlotBench, 16), espn.StatusFreeAgent)
+	f.pool = append(f.pool, stash)
+	base := f.league
+	f.league = func() *espn.League {
+		l := base()
+		l.ByeWeeks[stash.ProTeamID] = week // great rest of season, 0 points this week
+		return l
+	}
+	adds := func(a *Agent) bool {
+		p, err := a.Plan(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, act := range p.Actions {
+			if strings.Contains(act.Summary, "Bye Stash WR") {
+				return true
+			}
+		}
+		return false
+	}
+	if adds(testAgent(f)) {
+		t.Error("proposed a pickup that scores fewer points this week than the player it drops")
+	}
+	a := testAgent(f)
+	a.Cfg.AllowLowerWeekPickups = true
+	if !adds(a) {
+		t.Error("allow_lower_week_pickups should permit a rest-of-season stash")
+	}
+}

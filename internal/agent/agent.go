@@ -355,7 +355,9 @@ func (s *state) rosScorer() lineup.Scorer {
 func (s *state) teamValue(roster []*espn.Player, weekWeight float64) float64 {
 	week := 0.0
 	if weekWeight > 0 {
-		week = lineup.Optimize(s.l, startable(roster), s.weekScorer(s.lambda)).Total
+		// Roster moves are judged on expected points. Boom/bust upside only
+		// matters for who starts, which the lineup optimizer handles.
+		week = lineup.Optimize(s.l, startable(roster), s.weekScorer(0)).Total
 	}
 	// Rest of season: ignore this week's locks; pending claims count.
 	future := make([]*espn.Player, 0, len(roster))
