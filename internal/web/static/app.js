@@ -622,10 +622,97 @@ function renderHistory() {
       el("span", { class: "dot " + it.status }),
       el("div", { class: "grow" },
         el("div", { class: "nm", text: it.summary }),
-        el("div", { class: "sub", text: [when(it.created), it.result && it.result !== "done" && it.result !== "declined by you" ? it.result : "", it.via ? "decided in " + (it.via === "app" ? "the app" : "email") : ""].filter(Boolean).join(" · ") })),
+        el("div", { class: "sub", text: [when(it.created), it.result && it.result !== "done" && it.result !== "declined by you" ? it.result : "", it.via === "auto" ? "approved automatically (ruled-out starter)" : it.via ? "decided in " + (it.via === "app" ? "the app" : "email") : ""].filter(Boolean).join(" · ") })),
       el("span", { class: "status " + it.status, text: labels[it.status] || it.status })));
   }
   box.append(title("Last 7 days", items.length + ""), el("div", { class: "card flush" }, ul));
+}
+
+// --- notifications ---
+
+// Web Push needs a service worker, and on iPhone the app must be opened
+// from the Home Screen (iOS 16.4+).
+const push = { key: "", sub: null, reg: null, granted: false };
+const pushOn = () => !!push.sub && pushSupported() && (push.granted || Notification.permission === "granted");
+const pushSupported = () => "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+
+function b64url(s) {
+  const raw = atob(s.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((s.length + 3) % 4));
+  return Uint8Array.from(raw, (c) => c.charCodeAt(0));
+}
+
+async function pushPost(action, sub) {
+  const r = await fetch("api/push/" + action, {
+    method: "POST",
+    headers: { "X-FFAgent-Request": "1", "Content-Type": "application/json" },
+    body: JSON.stringify(sub),
+  });
+  const body = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(body.error || r.statusText);
+}
+
+function renderBell() {
+  const bell = $("bell");
+  const on = pushOn();
+  bell.setAttribute("aria-pressed", on);
+  bell.setAttribute("aria-label", on ? "Notifications are on" : "Turn on notifications");
+}
+
+async function initPush() {
+  const bell = $("bell");
+  try {
+    const r = await fetch("api/push", { cache: "no-store" });
+    const info = r.ok ? await r.json() : {};
+    if (!info.enabled) return;
+    push.key = info.key;
+  } catch (_) { return; }
+  bell.hidden = false;
+  bell.addEventListener("click", togglePush);
+  if (!pushSupported()) return renderBell();
+  push.reg = await navigator.serviceWorker.register("sw.js").catch(() => null);
+  if (!push.reg) return;
+  push.sub = await push.reg.pushManager.getSubscription().catch(() => null);
+  // A key change (or a lost server store) means subscribing afresh.
+  if (push.sub && push.sub.options && push.sub.options.applicationServerKey) {
+    const have = new Uint8Array(push.sub.options.applicationServerKey).join();
+    if (have !== b64url(push.key).join()) { await push.sub.unsubscribe().catch(() => {}); push.sub = null; }
+  }
+  if (push.sub && Notification.permission === "granted") pushPost("subscribe", push.sub).catch(() => {});
+  renderBell();
+}
+
+async function togglePush() {
+  if (!pushSupported()) {
+    return toast(/iPhone|iPad/.test(navigator.userAgent) && !navigator.standalone
+      ? "To get notifications, open ffagent from your Home Screen (Share › Add to Home Screen)."
+      : "This browser can't receive notifications.", true);
+  }
+  const bell = $("bell");
+  const reg = push.reg;
+  if (!reg) return toast("Notifications aren't ready yet; try again in a moment.", true);
+  bell.disabled = true;
+  try {
+    if (pushOn()) {
+      if (!confirm("Turn off notifications on this device?")) return;
+      await pushPost("unsubscribe", push.sub).catch(() => {});
+      await push.sub.unsubscribe().catch(() => {});
+      push.sub = null;
+      toast("Notifications off.");
+      return;
+    }
+    push.granted = await Notification.requestPermission() === "granted";
+    if (!push.granted) {
+      return toast("Notifications are blocked. Allow them for ffagent in Settings › Notifications.", true);
+    }
+    push.sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64url(push.key) });
+    await pushPost("subscribe", push.sub);
+    toast("Notifications on. You'll get one when a move needs your OK.");
+  } catch (e) {
+    toast("Couldn't turn on notifications: " + e.message, true);
+  } finally {
+    bell.disabled = false;
+    renderBell();
+  }
 }
 
 // --- tabs and lifecycle ---
@@ -638,6 +725,12 @@ function show(tab) {
   }
   try { localStorage.setItem("tab", tab); } catch (_) {}
   window.scrollTo(0, 0);
+}
+
+// tabFromHash opens a tab linked from a notification, like "#moves".
+function tabFromHash() {
+  const t = location.hash.slice(1);
+  return document.querySelector(`.tabbar button[data-tab="${CSS.escape(t)}"]`) ? t : "";
 }
 
 function skeletons() {
@@ -674,9 +767,11 @@ document.addEventListener("DOMContentLoaded", () => {
   $("refresh").addEventListener("click", () => load(true));
   let saved = "moves";
   try { saved = localStorage.getItem("tab") || "moves"; } catch (_) {}
-  show(saved);
+  show(tabFromHash() || saved);
+  window.addEventListener("hashchange", () => { const t = tabFromHash(); if (t) { show(t); load(false); } });
   skeletons();
   load(true);
+  initPush();
   setInterval(() => { if (document.visibilityState === "visible") load(false); }, 30000);
   document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") load(false); });
 });

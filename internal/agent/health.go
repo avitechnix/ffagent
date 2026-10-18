@@ -10,6 +10,7 @@ import (
 
 	"github.com/avitechnix/ffagent/internal/espn"
 	"github.com/avitechnix/ffagent/internal/mail"
+	"github.com/avitechnix/ffagent/internal/push"
 )
 
 // Health is the agent's own check of the data it's working from, so
@@ -113,6 +114,12 @@ func (w *Watcher) setHealth(ctx context.Context, now time.Time, probs []string) 
 		if changed {
 			fmt.Fprintf(w.Out, "%s  HEALTH  %s\n", stamp(now), p)
 		}
+	}
+	switch {
+	case changed && len(probs) > 0:
+		w.notify(push.Notification{Title: "ffagent needs attention", Body: briefList(probs), URL: "./", Tag: "ffagent-health"})
+	case changed && len(prev.Problems) > 0:
+		w.notify(push.Notification{Title: "ffagent: all clear", Body: "The earlier data problem is resolved.", URL: "./", Tag: "ffagent-health"})
 	}
 	if w.Mailer == nil || w.Agent.Cfg.Email.NotifyTo == "" {
 		return

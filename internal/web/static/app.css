@@ -117,6 +117,10 @@ button { font: inherit; color: inherit; cursor: pointer; }
 }
 .icon-btn:active { transform: scale(.94); }
 .icon-btn.spin svg { animation: spin .8s linear infinite; }
+.top-actions { display: flex; gap: 8px; flex: none; }
+.icon-btn[aria-pressed="true"] { background: var(--accent); color: #fff; }
+.icon-btn[aria-pressed="true"] svg { animation: ring 1.2s ease-out 1; }
+@keyframes ring { 0%, 100% { transform: rotate(0); } 15% { transform: rotate(14deg); } 30% { transform: rotate(-12deg); } 45% { transform: rotate(8deg); } 60% { transform: rotate(-4deg); } }
 @keyframes spin { to { transform: rotate(360deg); } }
 
 .pill {

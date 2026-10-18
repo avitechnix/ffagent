@@ -25,6 +25,7 @@ import (
 	"github.com/avitechnix/ffagent/internal/espn"
 	"github.com/avitechnix/ffagent/internal/mail"
 	"github.com/avitechnix/ffagent/internal/news"
+	"github.com/avitechnix/ffagent/internal/push"
 	"github.com/avitechnix/ffagent/internal/secrets"
 	"github.com/avitechnix/ffagent/internal/web"
 	"golang.org/x/term"
@@ -104,9 +105,20 @@ func main() {
 	if err != nil {
 		fatal(err)
 	}
+	// pass is kept only while the watcher's phone app needs it, to seal its
+	// notification keys and subscriptions the same way as the vault.
+	var pass []byte
+	defer func() { clear(pass) }()
 	if _, err := os.Stat(*vaultPath); err == nil {
-		if err := cfg.LoadSecrets(*vaultPath); err != nil {
+		if pass, err = secrets.Passphrase(); err != nil {
 			fatal(err)
+		}
+		if err := cfg.LoadSecretsWith(*vaultPath, pass); err != nil {
+			fatal(err)
+		}
+		if cmd != "watch" || !cfg.Web.Enabled {
+			clear(pass)
+			pass = nil
 		}
 	} else if *apply {
 		fatal(fmt.Errorf("no credentials vault at %s; run `ffagent secrets set` first", *vaultPath))
@@ -174,6 +186,19 @@ func main() {
 		fmt.Fprintf(out, "Watching injury news every %s (%s). Ctrl-C to stop.\n", interval, mode)
 		if cfg.Web.Enabled {
 			app := &web.Server{Backend: w, Allowed: cfg.Web.AllowedLogins}
+			if pass != nil {
+				subject := "https://github.com/avitechnix/ffagent"
+				if cfg.Email.Address != "" {
+					subject = "mailto:" + cfg.Email.Address // push services' contact if something goes wrong
+				}
+				store, err := push.Open(filepath.Join(filepath.Dir(*vaultPath), "push.vault"), pass, subject)
+				if err != nil {
+					fmt.Fprintln(os.Stderr, "note: phone notifications are off:", err)
+				} else {
+					app.Push, w.Notifier = store, store
+					fmt.Fprintf(out, "Phone notifications are available (%d device(s) subscribed).\n", store.Count())
+				}
+			}
 			go func() {
 				if err := app.ListenAndServe(ctx, cfg.Web.Listen); err != nil {
 					fmt.Fprintln(os.Stderr, "phone app server stopped:", err)

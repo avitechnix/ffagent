@@ -27,9 +27,14 @@
         <div id="subtitle" class="chips"><span class="chip">Loading…</span></div>
       </div>
     </div>
-    <button id="refresh" class="icon-btn" aria-label="Refresh">
-      <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M12 5V2L7 6l5 4V7a5 5 0 1 1-5 5H5a7 7 0 1 0 7-7z"/></svg>
-    </button>
+    <div class="top-actions">
+      <button id="bell" class="icon-btn" aria-label="Notifications" aria-pressed="false" hidden>
+        <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M12 22a2 2 0 0 0 2-2h-4a2 2 0 0 0 2 2zm6-6V11a6 6 0 0 0-5-5.9V4a1 1 0 0 0-2 0v1.1A6 6 0 0 0 6 11v5l-2 2v1h16v-1z"/></svg>
+      </button>
+      <button id="refresh" class="icon-btn" aria-label="Refresh">
+        <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M12 5V2L7 6l5 4V7a5 5 0 1 1-5 5H5a7 7 0 1 0 7-7z"/></svg>
+      </button>
+    </div>
   </div>
   <div id="mode" class="pill" hidden></div>
   <div id="health" class="health" role="alert" hidden></div>

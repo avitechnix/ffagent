@@ -73,6 +73,11 @@ type Config struct {
 	ApprovalMode          string `json:"approval_mode"`
 	ApprovalTTLHours      int    `json:"approval_ttl_hours"`
 	DeclinedCooldownHours int    `json:"declined_cooldown_hours"`
+	// AutoApproveRuledOut runs, without waiting for you, a lineup change
+	// whose only purpose is benching starters ESPN or the news has ruled out
+	// (OUT, IR, suspended) for healthy players. Adds, drops, claims and
+	// trades always wait. Off by default.
+	AutoApproveRuledOut bool `json:"auto_approve_ruled_out"`
 
 	Email EmailConfig `json:"email"`
 
@@ -308,6 +313,11 @@ func (c *Config) LoadSecrets(vaultPath string) error {
 			pass[i] = 0
 		}
 	}()
+	return c.LoadSecretsWith(vaultPath, pass)
+}
+
+// LoadSecretsWith is LoadSecrets with a passphrase the caller already has.
+func (c *Config) LoadSecretsWith(vaultPath string, pass []byte) error {
 	vals, err := secrets.ReadVault(vaultPath, pass)
 	if err != nil {
 		return err

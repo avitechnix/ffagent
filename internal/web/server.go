@@ -19,6 +19,7 @@ import (
 
 	"github.com/avitechnix/ffagent/internal/agent"
 	"github.com/avitechnix/ffagent/internal/approval"
+	"github.com/avitechnix/ffagent/internal/push"
 )
 
 //go:embed static
@@ -42,6 +43,8 @@ type Server struct {
 	Allowed []string
 	// Images proxies player photos and team logos (a default when nil).
 	Images *Images
+	// Push sends notifications to the phone (off when nil).
+	Push *push.Store
 }
 
 // loginHeader is set by `tailscale serve` for requests from tailnet users;
@@ -61,6 +64,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/moves/{id}/ask", s.ask)
 	mux.HandleFunc("POST /api/ask", s.askAnything)
 	mux.HandleFunc("POST /api/moves/{id}/{decision}", s.decide)
+	mux.HandleFunc("GET /api/push", s.pushKey)
+	mux.HandleFunc("POST /api/push/{action}", s.pushAction)
 	if s.Images == nil {
 		s.Images = &Images{}
 	}
@@ -75,7 +80,7 @@ func (s *Server) Handler() http.Handler {
 func (s *Server) secure(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h := w.Header()
-		h.Set("Content-Security-Policy", "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'")
+		h.Set("Content-Security-Policy", "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'; worker-src 'self'; manifest-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'")
 		h.Set("X-Content-Type-Options", "nosniff")
 		h.Set("Referrer-Policy", "no-referrer")
 		h.Set("X-Frame-Options", "DENY")
@@ -186,6 +191,53 @@ func (s *Server) askAnything(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, qa)
+}
+
+// pushKey tells the app whether notifications are available and the key
+// to subscribe with.
+func (s *Server) pushKey(w http.ResponseWriter, r *http.Request) {
+	if s.Push == nil {
+		writeJSON(w, http.StatusOK, map[string]any{"enabled": false})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"enabled": true, "key": s.Push.PublicKey(), "devices": s.Push.Count()})
+}
+
+// pushAction subscribes or unsubscribes this device, or sends it a test.
+func (s *Server) pushAction(w http.ResponseWriter, r *http.Request) {
+	if s.Push == nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "notifications are off on the server"})
+		return
+	}
+	var sub push.Subscription
+	if err := json.NewDecoder(io.LimitReader(r.Body, 8<<10)).Decode(&sub); err != nil || sub.Endpoint == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "send the push subscription"})
+		return
+	}
+	switch r.PathValue("action") {
+	case "subscribe":
+		fresh := !s.Push.Has(sub.Endpoint)
+		if err := s.Push.Add(sub); err != nil {
+			writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": err.Error()})
+			return
+		}
+		if fresh {
+			go s.Push.Notify(context.WithoutCancel(r.Context()), push.Notification{
+				Title: "Notifications are on",
+				Body:  "You'll hear here when a move needs your OK, when one runs, and if something needs attention.",
+				Tag:   "ffagent-welcome",
+			})
+		}
+	case "unsubscribe":
+		if err := s.Push.Remove(sub.Endpoint); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return
+		}
+	default:
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "unknown action"})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
 func writeJSON(w http.ResponseWriter, code int, v any) {

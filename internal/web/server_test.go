@@ -2,15 +2,22 @@ package web
 
 import (
 	"context"
+	"crypto/ecdh"
+	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/avitechnix/ffagent/internal/agent"
 	"github.com/avitechnix/ffagent/internal/approval"
+	"github.com/avitechnix/ffagent/internal/push"
 )
 
 type fakeBackend struct {
@@ -195,5 +202,74 @@ func TestAskAnythingEndpoint(t *testing.T) {
 	}
 	if w := post(`{"question":"`+strings.Repeat("a", 9000)+`"}`, ok); w.Code != http.StatusBadRequest {
 		t.Errorf("oversized body: %d", w.Code)
+	}
+}
+
+type roundTrip func(*http.Request) (*http.Response, error)
+
+func (f roundTrip) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+func TestPushEndpoints(t *testing.T) {
+	off := (&Server{Backend: &fakeBackend{}, Allowed: []string{owner}}).Handler()
+	if rr := do(off, "GET", "/api/push", map[string]string{loginHeader: owner}); !strings.Contains(rr.Body.String(), `"enabled":false`) {
+		t.Errorf("push should be off without a store: %s", rr.Body)
+	}
+
+	store, err := push.Open(filepath.Join(t.TempDir(), "push.vault"), []byte("pass"), "mailto:bot@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sent := make(chan string, 4)
+	store.Client = &http.Client{Transport: roundTrip(func(r *http.Request) (*http.Response, error) {
+		sent <- r.URL.String()
+		return &http.Response{StatusCode: http.StatusCreated, Body: http.NoBody, Request: r}, nil
+	})}
+	h := (&Server{Backend: &fakeBackend{}, Allowed: []string{owner}, Push: store}).Handler()
+
+	rr := do(h, "GET", "/api/push", map[string]string{loginHeader: owner})
+	var info struct {
+		Enabled bool   `json:"enabled"`
+		Key     string `json:"key"`
+	}
+	json.Unmarshal(rr.Body.Bytes(), &info)
+	if !info.Enabled || info.Key != store.PublicKey() {
+		t.Fatalf("key: %s", rr.Body)
+	}
+
+	k, _ := ecdh.P256().GenerateKey(rand.Reader)
+	sub := fmt.Sprintf(`{"endpoint":"https://web.push.apple.com/abc","keys":{"p256dh":%q,"auth":"BTBZMqHH6r4Tts7J_aSIgg"}}`,
+		base64.RawURLEncoding.EncodeToString(k.PublicKey().Bytes()))
+	post := func(path, body string, hdr map[string]string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest("POST", "https://box.tail1234.ts.net"+path, strings.NewReader(body))
+		for k, v := range hdr {
+			r.Header.Set(k, v)
+		}
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		return w
+	}
+	ok := map[string]string{loginHeader: owner, csrfHeader: "1"}
+	if rr := post("/api/push/subscribe", sub, map[string]string{loginHeader: owner}); rr.Code != http.StatusForbidden {
+		t.Errorf("subscribe without the CSRF header: %d", rr.Code)
+	}
+	if rr := post("/api/push/subscribe", sub, map[string]string{csrfHeader: "1"}); rr.Code != http.StatusForbidden {
+		t.Errorf("subscribe without a Tailscale login: %d", rr.Code)
+	}
+	if rr := post("/api/push/subscribe", strings.Replace(sub, "web.push.apple.com", "evil.example.com", 1), ok); rr.Code != http.StatusUnprocessableEntity {
+		t.Errorf("subscribed an endpoint that isn't a push service: %d", rr.Code)
+	}
+	if rr := post("/api/push/subscribe", sub, ok); rr.Code != http.StatusOK || !store.Has("https://web.push.apple.com/abc") {
+		t.Fatalf("subscribe: %d %s", rr.Code, rr.Body)
+	}
+	select {
+	case u := <-sent:
+		if u != "https://web.push.apple.com/abc" {
+			t.Errorf("welcome sent to %s", u)
+		}
+	case <-time.After(5 * time.Second):
+		t.Error("no welcome notification")
+	}
+	if rr := post("/api/push/unsubscribe", sub, ok); rr.Code != http.StatusOK || store.Count() != 0 {
+		t.Errorf("unsubscribe: %d, %d left", rr.Code, store.Count())
 	}
 }

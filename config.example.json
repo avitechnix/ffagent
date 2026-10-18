@@ -20,6 +20,7 @@
   "approval_mode": "email",
   "approval_ttl_hours": 12,
   "declined_cooldown_hours": 24,
+  "auto_approve_ruled_out": false,
   "email": {
     "address": "your-ffagent-bot@gmail.com",
     "notify_to": "you@example.com",

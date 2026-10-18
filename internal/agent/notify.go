@@ -72,6 +72,9 @@ func itemBlock(b *strings.Builder, st *approval.Store, it *approval.Item, loc *t
 
 func proposalEmail(p *Plan, b *approval.Batch, items []*approval.Item, loc *time.Location) (string, string) {
 	subject := fmt.Sprintf("[ffagent #%s] %s to review - reply to approve", b.Token, plural(len(items), "move"))
+	if len(items) == 1 && items[0].Status == approval.Approved {
+		subject = fmt.Sprintf("[ffagent #%s] Benching a ruled-out starter (approved automatically)", b.Token)
+	}
 	st := &approval.Store{Items: items}
 	var body strings.Builder
 	fmt.Fprintf(&body, "%sWeek %d: I'd like to make %s for %s.\n", leaguePrefix(p), p.League.CurrentWeek, plural(len(items), "move"), p.Me.Name)

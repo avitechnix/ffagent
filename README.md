@@ -113,10 +113,12 @@ reminder while they last and an all-clear when they're fixed. It looks for:
 ## iPhone app
 
 A small web app you add to your Home Screen. It opens full-screen like a native app and
-has four tabs:
+has five tabs:
 
 - **Moves:** pending proposals with their rationale and **Approve** / **Decline** buttons.
 - **Matchup:** win probability and the recommended lineup.
+- **Ask:** questions about your team, answered by Claude (see
+  [Follow-up questions](#follow-up-questions-optional-uses-claude)).
 - **Roster:** projections vs. actuals, injuries, "next man up" notes and rest-of-season
   value.
 - **History:** what was approved, declined and done.
@@ -157,6 +159,24 @@ between your own devices:
 
 The app works whenever Tailscale is connected on your phone. To turn it off:
 `sudo tailscale serve --https=443 off`.
+
+### Notifications
+
+Tap the **bell** at the top of the app to get a notification on your phone when:
+
+- moves are waiting for your OK,
+- an approved move has run (or couldn't),
+- the agent's data checks find a problem, and when it clears.
+
+Notifications need iOS 16.4 or later, and the app must be opened from its Home Screen
+icon (Safari tabs can't receive them). Tapping one opens the right tab. To stop them,
+tap the bell again, or turn ffagent off in **Settings → Notifications**.
+
+How it works: the agent signs each notification with its own key (VAPID) and encrypts
+it for your phone (RFC 8291) before handing it to Apple's push service. Apple can't read
+it. The key and your phone's subscription are stored in `push.vault` next to the
+credentials vault, encrypted with the same passphrase. The agent sends only to Apple's,
+Google's, Mozilla's and Microsoft's push services, at most 5 devices.
 
 ## Follow-up questions (optional, uses Claude)
 
@@ -338,6 +358,19 @@ Every interval, the watcher:
    - **Waiver players** get a claim filed once you approve. Waivers aren't won by
      speed: ESPN awards them by priority or FAAB bid when they process.
    - **Lineup.** Benching the injured starter is part of the same proposal.
+5. **Sweeps around kickoff.** Inactives come out about 90 minutes before each game.
+   From 100 minutes before any kickoff this week until 5 minutes after it, the news
+   is checked every minute instead of every `watch_interval_minutes`, so a starter
+   ruled out late can still be benched before his game locks.
+
+**Benching ruled-out starters automatically (opt-in).** A late scratch can come out
+while you're busy. Set `"auto_approve_ruled_out": true` to let the watcher run a
+lineup change without waiting when all it does is bench starters who are **OUT**, on
+**IR** or **suspended** (by the latest news or ESPN) for players with no injury
+designation. It still goes through the fresh re-check, and you get the proposal
+email, a notification, and the result. Anything else always waits for you: adds,
+drops, claims, trades, benching anyone who can play, starting a questionable player,
+and a lineup that depends on a roster move. It's off by default.
 
 Safeguards:
 
@@ -377,6 +410,8 @@ of the unattended options under [Storing credentials](#storing-credentials-encry
   Raise it to chase this week's win harder.
 - `max_faab_fraction`: the most of your remaining budget one claim can use.
 - `risk_aware`: turn the win-probability lineup logic on or off.
+- `auto_approve_ruled_out` (default `false`): see
+  [Injury news and watch mode](#injury-news-and-watch-mode).
 - `min_trade_gain`, `trade_tolerance`: how good a trade must be for you, and how much
   the partner can lose by the model's measure before the offer is dropped.
 
@@ -465,6 +500,7 @@ internal/news       ESPN injury report and headline feeds
 internal/approval  approval queue, reply parsing, decision history
 internal/ask       follow-up questions answered by Claude (Anthropic Go SDK)
 internal/web       phone web app: localhost HTTP server, Tailscale identity check, static UI
+internal/push      Web Push notifications: RFC 8291 encryption, VAPID signing, encrypted store
 internal/mail      SMTP sending and minimal IMAP reply reading (TLS only)
 internal/secrets    encrypted vault, passphrase sources, redacting Secret type
 ```
