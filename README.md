@@ -117,6 +117,8 @@ between your own devices:
   agent refuses everyone except the login(s) in `web.allowed_logins`.
 - Approve/decline requests also require an anti-forgery header and a same-origin check.
 - Pages use a strict Content Security Policy.
+- Player photos and team logos come from ESPN's image CDN through the agent, which
+  caches them. Your phone only ever talks to the agent.
 
 **Setup:**
 

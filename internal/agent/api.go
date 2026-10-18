@@ -39,6 +39,9 @@ type AppStatus struct {
 	PlannedAt    time.Time `json:"planned_at"`
 	Ready        bool      `json:"ready"` // false until the first plan is made
 	AskEnabled   bool      `json:"ask_enabled"`
+	MyTeamID     int       `json:"my_team_id"`
+	OppTeamID    int       `json:"opp_team_id,omitempty"`
+	OppRecord    string    `json:"opp_record,omitempty"`
 	MyActual     float64   `json:"my_actual"`  // starters' points so far
 	OppActual    float64   `json:"opp_actual"` // opponent starters' points so far
 }
@@ -59,7 +62,8 @@ type AppItem struct {
 	Expires time.Time `json:"expires,omitempty"`
 	Decided time.Time `json:"decided,omitempty"`
 	Via     string    `json:"via,omitempty"`
-	Thread  []AppQA   `json:"thread,omitempty"` // follow-up questions about this move
+	Thread  []AppQA   `json:"thread,omitempty"`  // follow-up questions about this move
+	Players []int     `json:"players,omitempty"` // ESPN IDs in the move, in transaction order (added before dropped)
 }
 
 // AppQA is one follow-up question and Claude's answer.
@@ -72,32 +76,38 @@ type AppQA struct {
 
 // AppRow is one roster player's analysis.
 type AppRow struct {
-	Slot     string   `json:"slot"`
-	Name     string   `json:"name"`
-	Position string   `json:"position"`
-	Team     string   `json:"team"`
-	Injury   string   `json:"injury,omitempty"`
-	ESPN     float64  `json:"espn"`
-	Proj     float64  `json:"proj"`
-	StdDev   float64  `json:"sd"`
-	Accuracy float64  `json:"accuracy,omitempty"`  // actual/projected; 0 when unknown
-	AccWeeks int      `json:"acc_weeks,omitempty"` // weeks behind Accuracy
-	Avg      float64  `json:"avg"`
-	Last3    float64  `json:"last3"`
-	ROS      float64  `json:"ros"`
-	Notes    []string `json:"notes,omitempty"`
+	ID       int       `json:"id"` // ESPN player ID (negative for a D/ST)
+	Slot     string    `json:"slot"`
+	Name     string    `json:"name"`
+	Position string    `json:"position"`
+	Team     string    `json:"team"`
+	Injury   string    `json:"injury,omitempty"`
+	ESPN     float64   `json:"espn"`
+	Proj     float64   `json:"proj"`
+	StdDev   float64   `json:"sd"`
+	Accuracy float64   `json:"accuracy,omitempty"`  // actual/projected; 0 when unknown
+	AccWeeks int       `json:"acc_weeks,omitempty"` // weeks behind Accuracy
+	Opp      string    `json:"opp,omitempty"`       // this week's NFL opponent: "NYJ" at home, "@NYJ" away, "BYE"
+	Kickoff  time.Time `json:"kickoff,omitempty"`   // this week's game
+	Avg      float64   `json:"avg"`
+	Last3    float64   `json:"last3"`
+	ROS      float64   `json:"ros"`
+	Notes    []string  `json:"notes,omitempty"`
 }
 
 // AppStart is one starter in a lineup.
 type AppStart struct {
-	Slot     string  `json:"slot"`
-	Name     string  `json:"name"`
-	Position string  `json:"position"`
-	Team     string  `json:"team"`
-	Proj     float64 `json:"proj"`   // expected final points (live once his game starts)
-	Actual   float64 `json:"actual"` // points so far this week
-	Locked   bool    `json:"locked"` // game started
-	Left     float64 `json:"left"`   // fraction of his game still to play
+	ID       int       `json:"id"`
+	Slot     string    `json:"slot"`
+	Name     string    `json:"name"`
+	Position string    `json:"position"`
+	Team     string    `json:"team"`
+	Proj     float64   `json:"proj"`   // expected final points (live once his game starts)
+	Actual   float64   `json:"actual"` // points so far this week
+	Locked   bool      `json:"locked"` // game started
+	Left     float64   `json:"left"`   // fraction of his game still to play
+	Opp      string    `json:"opp,omitempty"`
+	Kickoff  time.Time `json:"kickoff,omitempty"`
 }
 
 // Snapshot returns the current state for the phone app.
@@ -138,11 +148,12 @@ func (w *Watcher) Snapshot() Snapshot {
 	}
 	s.Status.Ready, s.Status.PlannedAt = true, w.latestAt
 	s.Status.League, s.Status.Week, s.Status.Team = p.League.Name, p.League.CurrentWeek, p.Me.Name
-	s.Status.Record = recordString(p.Me)
+	s.Status.Record, s.Status.MyTeamID = recordString(p.Me), p.Me.ID
 	if m := p.Matchup; m != nil {
 		s.Status.MyProjected, s.Status.WinProb, s.Status.Strategy = m.MyProjected, m.WinProb, m.Strategy
 		if m.Opponent != nil {
 			s.Status.Opponent, s.Status.OppProjected = m.Opponent.Name, m.OppProjected
+			s.Status.OppTeamID, s.Status.OppRecord = m.Opponent.ID, recordString(m.Opponent)
 		}
 	}
 	roster := append([]*espn.Player(nil), p.Me.Roster...)
@@ -153,10 +164,11 @@ func (w *Watcher) Snapshot() Snapshot {
 			continue
 		}
 		row := AppRow{
-			Slot: espn.SlotName(pl.LineupSlot), Name: pl.Name, Position: pl.Position, Team: pl.ProTeam,
+			ID: pl.ID, Slot: espn.SlotName(pl.LineupSlot), Name: pl.Name, Position: pl.Position, Team: pl.ProTeam,
 			ESPN: v.ESPNWeekProjection, Proj: v.WeekProjection, StdDev: v.WeekStdDev,
 			Avg: v.SeasonAvg, Last3: v.RecentAvg, ROS: v.ROSValue, Notes: v.Notes,
 		}
+		row.Opp, row.Kickoff = gameInfo(p.League, pl)
 		if st := pl.EffectiveInjury(); st != espn.InjuryActive {
 			row.Injury = st
 		}
@@ -183,18 +195,51 @@ func starters(p *Plan, roster []*espn.Player, a lineup.Assignment) ([]AppStart, 
 		if !ok || !espn.IsStartingSlot(slot) {
 			continue
 		}
-		st := AppStart{Slot: espn.SlotName(slot), Name: pl.Name, Position: pl.Position, Team: pl.ProTeam, Locked: pl.Locked, Left: 1}
+		st := AppStart{ID: pl.ID, Slot: espn.SlotName(slot), Name: pl.Name, Position: pl.Position, Team: pl.ProTeam, Locked: pl.Locked, Left: 1}
 		if v := p.Values[pl.ID]; v != nil {
 			st.Proj, st.Actual = v.WeekProjection, v.WeekActual
 		}
 		if pl.Locked {
 			st.Left = pl.GameLeft
 		}
+		st.Opp, st.Kickoff = gameInfo(p.League, pl)
 		actual += st.Actual
 		out = append(out, st)
 	}
 	sort.SliceStable(out, func(i, j int) bool { return lineupOrder(out[i].Slot) < lineupOrder(out[j].Slot) })
 	return out, actual
+}
+
+// gameInfo returns a player's NFL opponent this week ("NYJ" at home,
+// "@NYJ" away, "BYE") and the kickoff time.
+func gameInfo(l *espn.League, pl *espn.Player) (string, time.Time) {
+	if l == nil {
+		return "", time.Time{}
+	}
+	g, ok := l.ProGames[pl.ProTeamID][l.CurrentWeek]
+	if !ok {
+		if l.OnBye(pl.ProTeamID, l.CurrentWeek) {
+			return "BYE", time.Time{}
+		}
+		return "", time.Time{}
+	}
+	if g.HomeID == pl.ProTeamID {
+		return l.ProTeamAbbrev(g.AwayID), g.Start
+	}
+	return "@" + l.ProTeamAbbrev(g.HomeID), g.Start
+}
+
+// TeamLogo returns the logo URL a fantasy team in the league chose, or "".
+func (w *Watcher) TeamLogo(id int) string {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.latest == nil || w.latest.League == nil {
+		return ""
+	}
+	if t := w.latest.League.Team(id); t != nil {
+		return t.Logo
+	}
+	return ""
 }
 
 // Decide records your decision on a move from the phone app; approved
@@ -224,7 +269,7 @@ func appItem(st *approval.Store, it *approval.Item) AppItem {
 	a := AppItem{
 		ID: it.ID, Number: it.Number, Batch: it.Batch, Kind: it.Kind, Label: kindLabel(it.Kind),
 		Summary: it.Summary, Reason: it.Reason, Status: string(it.Status), Result: it.Result,
-		Created: it.Created, Expires: it.Expires, Decided: it.Decided, Via: it.Via,
+		Created: it.Created, Expires: it.Expires, Decided: it.Decided, Via: it.Via, Players: it.Players,
 	}
 	for _, id := range it.Depends {
 		if d := st.Item(id); d != nil {

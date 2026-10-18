@@ -122,6 +122,7 @@ type Team struct {
 	ID            int
 	Abbrev        string
 	Name          string
+	Logo          string // image URL the team's manager chose; may be on any host
 	Owners        []string
 	WaiverRank    int
 	FAABRemaining int
