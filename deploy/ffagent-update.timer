@@ -1,0 +1,11 @@
+# Tuesdays, when no NFL games are on.
+[Unit]
+Description=Weekly ffagent update
+
+[Timer]
+OnCalendar=Tue *-*-* 09:00:00
+RandomizedDelaySec=1h
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -454,3 +454,9 @@ main { padding: 14px 16px 24px; max-width: 640px; margin: 0 auto; }
 .ask-off .cmd { display: block; margin: 14px auto 10px; padding: 10px 12px; border-radius: 10px; background: var(--surface-2); font: 13px/1.4 ui-monospace, "SF Mono", Menlo, monospace; color: var(--text); user-select: all; overflow-wrap: anywhere; text-align: left; max-width: 36ch; }
 .copy-btn { border: 0; background: var(--accent-soft); color: var(--accent); font-weight: 700; padding: 9px 16px; border-radius: 999px; }
 .tabbar button { font-size: 10.5px; }
+
+/* --- health banner ------------------------------------------------------ */
+.health { margin-top: 10px; padding: 10px 12px; border-radius: 14px; background: var(--warn-soft); color: var(--warn); font-size: 13.5px; line-height: 1.45; }
+.health b { display: block; margin-bottom: 4px; }
+.health ul { margin: 0; padding-left: 18px; }
+.health li { margin-top: 2px; overflow-wrap: anywhere; }

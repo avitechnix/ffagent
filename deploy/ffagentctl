@@ -11,6 +11,8 @@
 #   sudo ffagentctl mode apply       # watcher emails moves for your approval
 #   sudo ffagentctl mode dry-run     # watcher only logs what it would propose
 #   sudo ffagentctl status | logs
+#   sudo ffagentctl update           # pull the latest code and reinstall
+#   sudo ffagentctl auto-update on|off   # weekly update (Tuesdays)
 #
 # Commands run as the unprivileged ffagent user in a transient systemd unit
 # that receives the decrypted vault passphrase the same way the service does,
@@ -23,7 +25,7 @@ UNIT=ffagent-watch.service
 
 die() { echo "ffagentctl: $*" >&2; exit 1; }
 [[ $EUID -eq 0 ]] || die "run with sudo"
-[[ $# -gt 0 ]] || { sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
+[[ $# -gt 0 ]] || { sed -n '2,18p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
 
 case "$1" in
   mode)
@@ -35,6 +37,29 @@ case "$1" in
     chmod 0644 "$ENVFILE"
     systemctl restart "$UNIT"
     echo "watcher restarted in ${2} mode"
+    exit 0 ;;
+  update)
+    SRC=$(cat /etc/ffagent/source 2>/dev/null || true)
+    [[ -n $SRC && -d $SRC/.git ]] || die "don't know where the source is; cd into your ffagent checkout and run: sudo ./deploy/install.sh"
+    owner=$(stat -c %U "$SRC")
+    asowner=(); [[ $owner != root ]] && asowner=(sudo -u "$owner" --)
+    before=$("${asowner[@]}" git -C "$SRC" rev-parse HEAD)
+    "${asowner[@]}" git -C "$SRC" pull --ff-only --quiet || die "git pull failed (local changes in $SRC?); nothing was changed"
+    after=$("${asowner[@]}" git -C "$SRC" rev-parse HEAD)
+    if [[ $before == "$after" ]]; then
+      echo "ffagent is up to date ($(git -C "$SRC" log -1 --format=%h))"
+      exit 0
+    fi
+    echo "Updating ffagent:"
+    "${asowner[@]}" git -C "$SRC" log --format='  %h %s' "$before..$after" | head -20
+    mode=dry-run; grep -q -- --apply "$ENVFILE" 2>/dev/null && mode=apply
+    MODE=$mode FFAGENT_UPDATE=1 exec "$SRC/deploy/install.sh" </dev/null ;;
+  auto-update)
+    case "${2:-}" in
+      on)  systemctl enable --now ffagent-update.timer && echo "weekly updates on (Tuesdays); next: $(systemctl show -p NextElapseUSecRealtime --value ffagent-update.timer)" ;;
+      off) systemctl disable --now ffagent-update.timer && echo "weekly updates off" ;;
+      *) die "usage: ffagentctl auto-update on|off" ;;
+    esac
     exit 0 ;;
   status) exec systemctl status "$UNIT" --no-pager ;;
   logs)   shift; exec journalctl -u "$UNIT" --no-pager -n 200 "$@" ;;
