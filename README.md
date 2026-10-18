@@ -309,6 +309,7 @@ Never paste the cookies or the passphrase into a chat, a ticket, or a shell comm
 ./ffagent waivers                  # IR moves + pickups/claims (with FAAB bids)
 ./ffagent trades                   # trade ideas
 ./ffagent free-agents --pos RB     # best available at a position
+./ffagent backtest                 # would Vegas lines or matchups beat ESPN's projections?
 
 ./ffagent run                      # everything, dry run
 ./ffagent run --apply              # do it: IR, pickups, claims, then set the lineup
@@ -415,6 +416,36 @@ of the unattended options under [Storing credentials](#storing-credentials-encry
 - `min_trade_gain`, `trade_tolerance`: how good a trade must be for you, and how much
   the partner can lose by the model's measure before the offer is dropped.
 
+### Should projections use Vegas lines or matchups? (`ffagent backtest`)
+
+The agent uses ESPN's projections as they are. `ffagent backtest` checks whether two
+common adjustments would have made them more accurate this season:
+
+- **Vegas implied team total:** the over/under split by the spread, against that
+  week's average. A defense uses its opponent's total.
+- **Defense vs. position:** points the opponent has allowed to the position in earlier
+  weeks, against the league average, shrunk toward average.
+
+Each adjustment scales ESPN's projection by `1 + b × signal`, with `b` fitted per
+position. Every week is scored with `b` fitted on the other weeks. An adjustment counts
+as better only if the 95% interval of its gain excludes zero. Weather isn't tested:
+ESPN publishes only text forecasts for the coming week, with no wind and nothing for
+past games.
+
+Results for 2026 weeks 1–5 (1,541 player-weeks, every game's DraftKings line):
+
+| Signal | ESPN error | With it | Gain | 95% interval |
+|---|---|---|---|---|
+| Vegas implied total | 5.115 | 5.091 | +0.024 | [−0.008, +0.055] |
+| Defense vs. position | 5.072 | 5.105 | −0.034 | [−0.059, −0.008] |
+| Both | 5.072 | 5.074 | −0.002 | [−0.049, +0.045] |
+
+The error is the mean absolute error in PPR points per player-week. Vegas totals help by
+about half a percent, too little to tell from chance; ESPN's projections already seem to
+price the lines in. Defense vs. position makes projections worse. So neither is applied.
+Re-run the backtest later in the season, when more weeks make the test sharper. It reads
+only public data, so it needs no credentials.
+
 ## Approvals and email
 
 In `approval_mode: "email"` (the default), nothing happens on ESPN until you approve it.
@@ -492,7 +523,7 @@ of this.
 ```
 cmd/ffagent         CLI
 internal/espn       API client: league/roster/player reads, transactions
-internal/analysis   player valuation: accuracy vs projections, volatility, ROS
+internal/analysis   player valuation: accuracy vs projections, volatility, ROS; signal backtest
 internal/lineup     exact lineup optimizer (Hungarian assignment)
 internal/agent      IR, pickups, matchup strategy, trades, execution, reports
 internal/config     JSON + env configuration (rejects plaintext credentials)

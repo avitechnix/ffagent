@@ -366,7 +366,7 @@ func (c *Client) loadProSchedule(ctx context.Context, l *League) error {
 				continue
 			}
 			g := gs[0]
-			games[w] = ProGame{Week: w, Start: time.UnixMilli(g.Date), HomeID: g.HomeProTeamID, AwayID: g.AwayProTeamID}
+			games[w] = ProGame{ID: g.ID, Week: w, Start: time.UnixMilli(g.Date), HomeID: g.HomeProTeamID, AwayID: g.AwayProTeamID}
 		}
 		if len(games) > 0 {
 			l.ProGames[pt.ID] = games
@@ -597,6 +597,7 @@ type rawProSchedule struct {
 			Abbrev                  string `json:"abbrev"`
 			ByeWeek                 int    `json:"byeWeek"`
 			ProGamesByScoringPeriod map[string][]struct {
+				ID            int   `json:"id"`
 				Date          int64 `json:"date"`
 				HomeProTeamID int   `json:"homeProTeamId"`
 				AwayProTeamID int   `json:"awayProTeamId"`
