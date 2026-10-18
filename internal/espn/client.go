@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -20,6 +21,8 @@ import (
 const (
 	DefaultReadBase  = "https://lm-api-reads.fantasy.espn.com/apis/v3/games/ffl"
 	DefaultWriteBase = "https://lm-api-writes.fantasy.espn.com/apis/v3/games/ffl"
+	// DefaultScoreboard is ESPN's public NFL scoreboard, for live game clocks.
+	DefaultScoreboard = "https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard"
 )
 
 // Client talks to the ESPN fantasy API for one league and season.
@@ -30,21 +33,24 @@ type Client struct {
 	SWID      secrets.Secret // SWID cookie, including braces
 	ReadBase  string
 	WriteBase string
-	HTTP      *http.Client
-	Now       func() time.Time
+	// Scoreboard is the public NFL scoreboard URL ("" to skip live clocks).
+	Scoreboard string
+	HTTP       *http.Client
+	Now        func() time.Time
 }
 
 // NewClient returns a client with default endpoints.
 func NewClient(leagueID, season int, espnS2, swid secrets.Secret) *Client {
 	return &Client{
-		LeagueID:  leagueID,
-		Season:    season,
-		ESPNS2:    espnS2,
-		SWID:      NormalizeSWIDSecret(swid),
-		ReadBase:  DefaultReadBase,
-		WriteBase: DefaultWriteBase,
-		HTTP:      &http.Client{Timeout: 30 * time.Second},
-		Now:       time.Now,
+		LeagueID:   leagueID,
+		Season:     season,
+		ESPNS2:     espnS2,
+		SWID:       NormalizeSWIDSecret(swid),
+		ReadBase:   DefaultReadBase,
+		WriteBase:  DefaultWriteBase,
+		Scoreboard: DefaultScoreboard,
+		HTTP:       &http.Client{Timeout: 30 * time.Second},
+		Now:        time.Now,
 	}
 }
 
@@ -183,11 +189,13 @@ func (c *Client) FetchLeague(ctx context.Context) (*League, error) {
 		// Bye weeks are helpful but not essential.
 		league.ByeWeeks = map[int]int{}
 	}
+	c.loadLive(ctx, league) // optional: without it, game progress is estimated from kickoff times
 	now := c.Now()
 	for _, t := range league.Teams {
 		for _, p := range t.Roster {
 			if league.GameStarted(p.ProTeamID, league.CurrentWeek, now) {
 				p.Locked = true
+				p.GameLeft = league.GameLeft(p.ProTeamID, league.CurrentWeek, now)
 			}
 			p.ProTeam = league.ProTeamAbbrev(p.ProTeamID)
 		}
@@ -210,6 +218,86 @@ func (c *Client) FetchLeague(ctx context.Context) (*League, error) {
 		return league, fmt.Errorf("espn: loading projection history: %w", err)
 	}
 	return league, nil
+}
+
+// loadLive reads this week's game clocks from ESPN's public NFL scoreboard
+// into l.Live. No cookies are sent: it's a public endpoint on another host.
+// Pro team IDs there are the same as fantasy pro team IDs.
+func (c *Client) loadLive(ctx context.Context, l *League) {
+	if c.Scoreboard == "" {
+		return
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.Scoreboard, nil)
+	if err != nil {
+		return
+	}
+	resp, err := c.HTTP.Do(req)
+	if err != nil {
+		return
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return
+	}
+	var sb struct {
+		Week   struct{ Number int } `json:"week"`
+		Events []struct {
+			Competitions []struct {
+				Status struct {
+					Period int     `json:"period"`
+					Clock  float64 `json:"clock"`
+					Type   struct {
+						State string `json:"state"`
+					} `json:"type"`
+				} `json:"status"`
+				Competitors []struct {
+					Team struct {
+						ID string `json:"id"`
+					} `json:"team"`
+				} `json:"competitors"`
+			} `json:"competitions"`
+		} `json:"events"`
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 8<<20)).Decode(&sb); err != nil {
+		return
+	}
+	if sb.Week.Number != 0 && sb.Week.Number != l.CurrentWeek {
+		return // the scoreboard has moved on to another week
+	}
+	live := map[int]LiveGame{}
+	for _, ev := range sb.Events {
+		for _, comp := range ev.Competitions {
+			st := comp.Status
+			var g LiveGame
+			switch st.Type.State {
+			case "pre":
+				g.Left = 1
+			case "post":
+				g.Final = true
+			default:
+				g.Left = gameLeft(st.Period, st.Clock)
+			}
+			for _, t := range comp.Competitors {
+				if id, err := strconv.Atoi(t.Team.ID); err == nil {
+					live[id] = g
+				}
+			}
+		}
+	}
+	l.Live = live
+}
+
+// gameLeft is the fraction of regulation left at a period and game clock
+// (seconds left in the period). Overtime counts as nearly over.
+func gameLeft(period int, clock float64) float64 {
+	if period < 1 {
+		return 1
+	}
+	if period > 4 {
+		return 0.02
+	}
+	left := (float64(4-period)*900 + math.Min(math.Max(clock, 0), 900)) / 3600
+	return math.Max(0.02, left)
 }
 
 // referencePath is ESPN's public player data under default PPR scoring.
@@ -384,6 +472,9 @@ func (c *Client) FreeAgents(ctx context.Context, l *League, position string, pro
 		p := e.toPlayer(SlotUnknown, "")
 		p.ProTeam = l.ProTeamAbbrev(p.ProTeamID)
 		p.Locked = l.GameStarted(p.ProTeamID, l.CurrentWeek, now)
+		if p.Locked {
+			p.GameLeft = l.GameLeft(p.ProTeamID, l.CurrentWeek, now)
+		}
 		out = append(out, p)
 	}
 	_ = c.addReference(ctx, l, out) // optional: without it, no track record

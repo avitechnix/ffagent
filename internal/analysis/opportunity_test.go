@@ -39,3 +39,21 @@ func TestOpportunityIsAFloorNotABonus(t *testing.T) {
 		t.Errorf("backup %.1f would outrank a 19-point starter", v.WeekProjection)
 	}
 }
+
+// Once the backup's game has started, his points so far count, not a floor.
+func TestOpportunityLeavesLiveGamesAlone(t *testing.T) {
+	now := time.Date(2026, 10, 18, 17, 30, 0, 0, time.UTC)
+	l := league(6)
+	hurt := withHistory("RB", []float64{18, 18, 18, 18, 18}, []float64{18, 18, 18, 18, 18}, 18)
+	hurt.InjuryStatus = espn.InjuryOut
+	backup := withHistory("RB", []float64{4, 4, 4, 4, 4}, []float64{4, 4, 4, 4, 4}, 4)
+	backup.ID, backup.Locked, backup.GameLeft = 2, true, 0.8
+	backup.Stats = append(backup.Stats, espn.StatLine{Season: season, Week: 6, Weekly: true, Points: 2.1})
+	players := []*espn.Player{hurt, backup}
+	vals := ValueAll(l, players, DefaultOptions())
+	before := vals[2].WeekProjection
+	ApplyOpportunity(l, players, vals, map[int]Injury{hurt.ID: {PlayerID: hurt.ID, Status: espn.InjuryOut, Date: now.Add(-time.Hour)}}, now, 48*time.Hour)
+	if vals[2].WeekProjection != before {
+		t.Errorf("live backup lifted from %.1f to %.1f", before, vals[2].WeekProjection)
+	}
+}
