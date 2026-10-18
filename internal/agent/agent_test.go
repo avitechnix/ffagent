@@ -388,3 +388,57 @@ func TestUnderdogDoesNotStartAFarLowerProjection(t *testing.T) {
 		t.Errorf("benched a 19-point QB for a 14-point boom/bust backup (lambda %v)", p.Matchup.Lambda)
 	}
 }
+
+// A free agent whose game has already been played can't score for us this
+// week: his points don't count against the player he'd replace, and the
+// reason doesn't present them as a projection.
+func TestPickupAfterHisGameWasPlayed(t *testing.T) {
+	f, _ := scenario()
+	played := freeAgent(mk("Already Played QB", "QB", espn.SlotBench, 30), espn.StatusFreeAgent)
+	played.Locked, played.GameLeft = true, 0
+	played.Stats = append(played.Stats, espn.StatLine{Season: season, Week: week, Weekly: true, Points: 30})
+	f.pool = append(f.pool, played)
+
+	// Into an open roster spot it's still worth it for the rest of the season.
+	p, err := testAgent(f).Plan(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, act := range p.Actions {
+		if strings.Contains(act.Summary, "Already Played QB") {
+			found = true
+			if !strings.Contains(act.Reason, "already started") || strings.Contains(act.Reason, "this week (ESPN") {
+				t.Errorf("reason: %s", act.Reason)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("rest-of-season upgrade not proposed")
+	}
+
+	// Replacing someone who can still play this week: he projects lower.
+	a := testAgent(f)
+	l := f.league()
+	me := l.Teams[0]
+	s := a.newState(l, me)
+	var drop *espn.Player
+	for _, pl := range me.Roster {
+		if pl.Name == "QB Bench" {
+			drop = pl
+		}
+	}
+	c := *played
+	c.OnTeamID, c.Status = me.ID, espn.StatusOnTeam
+	if !s.projectsLower(&c, drop) {
+		t.Error("a player whose game is over should count as 0 this week")
+	}
+	c.Locked = false
+	if s.projectsLower(&c, drop) {
+		t.Error("before his game, his projection counts")
+	}
+	c.Locked, c.Status = true, pendingClaim
+	if s.projectsLower(&c, drop) {
+		t.Error("a waiver claim leaves this week unchanged (the drop stays until it clears)")
+	}
+}
