@@ -5,6 +5,7 @@ package agent
 import (
 	"context"
 	"fmt"
+	"math"
 	"sort"
 	"strconv"
 	"strings"
@@ -335,12 +336,18 @@ func (s *state) val(p *espn.Player) *analysis.Valuation {
 	return v
 }
 
+// maxRiskShift caps the boom/bust adjustment at this fraction of a player's
+// projection, so it only settles close calls and can't start a player who
+// projects far fewer points.
+const maxRiskShift = 0.15
+
 // weekScorer scores players for this week's lineup: expected points plus
 // lambda standard deviations (lambda > 0 favors boom/bust upside).
 func (s *state) weekScorer(lambda float64) lineup.Scorer {
 	return func(p *espn.Player) float64 {
 		v := s.val(p)
-		return v.WeekProjection + lambda*v.WeekStdDev
+		limit := maxRiskShift * v.WeekProjection
+		return v.WeekProjection + math.Max(-limit, math.Min(limit, lambda*v.WeekStdDev))
 	}
 }
 
