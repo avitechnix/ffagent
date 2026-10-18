@@ -85,6 +85,7 @@ func ApplyOpportunity(l *espn.League, players []*espn.Player, vals map[int]*Valu
 			continue
 		}
 		gain := share * hurtV.PerGame
+		next.OpportunityBoost += gain
 		if !next.OnBye {
 			next.WeekProjection += gain * next.InjuryFactor
 		}

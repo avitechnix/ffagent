@@ -76,3 +76,28 @@ func TestWinProbability(t *testing.T) {
 		t.Errorf("10 pt favorite with sd 10 = %.3f, want ~0.84", p)
 	}
 }
+
+func TestLostRoleOutweighsHotStart(t *testing.T) {
+	// Scored 20 a game as a starter, then lost the job: ESPN now projects 5.
+	p := withHistory("RB", []float64{18, 18, 18, 18, 6}, []float64{22, 20, 21, 19, 5}, 5)
+	v := Value(league(6), p, DefaultOptions())
+	if v.PerGame > 11 {
+		t.Errorf("per-game %.1f still trusts the hot start over ESPN's current 5", v.PerGame)
+	}
+}
+
+func TestMissedGamesAreNotGamesPlayed(t *testing.T) {
+	// Out for weeks 3-4: ESPN reports 0 actual and no projection.
+	p := withHistory("WR", []float64{12, 12, 12, 12, 12}, []float64{12, 12, 0, 0, 12}, 12)
+	p.Stats = p.Stats[:0:0]
+	for w, a := range []float64{12, 12, 0, 0, 12} {
+		if a > 0 {
+			p.Stats = append(p.Stats, espn.StatLine{Season: season, Week: w + 1, Weekly: true, Projected: true, Points: 12})
+		}
+		p.Stats = append(p.Stats, espn.StatLine{Season: season, Week: w + 1, Weekly: true, Points: a})
+	}
+	v := Value(league(6), p, DefaultOptions())
+	if v.WeeksPlayed != 3 || v.SeasonAvg != 12 {
+		t.Errorf("played %d at %.1f a game, want 3 at 12", v.WeeksPlayed, v.SeasonAvg)
+	}
+}

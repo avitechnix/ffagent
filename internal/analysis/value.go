@@ -34,6 +34,7 @@ type Valuation struct {
 	WeekActual         float64 // points already scored this week, when locked
 	OnBye              bool
 	InjuryFactor       float64
+	OpportunityBoost   float64 // points per week added because a teammate is out
 
 	// Rest of season.
 	PerGame        float64 // expected points per game going forward
@@ -114,8 +115,8 @@ func Value(l *espn.League, p *espn.Player, o Options) *Valuation {
 			continue
 		}
 		proj, okP := p.WeekProjection(season, w)
-		if okP && proj <= 0 && act == 0 {
-			continue // didn't play (bye/inactive)
+		if act == 0 && (!okP || proj <= 0) {
+			continue // didn't play (bye/inactive/injured): not a game played
 		}
 		v.WeeklyActuals = append(v.WeeklyActuals, act)
 		if okP && proj > 0 {
@@ -145,8 +146,18 @@ func Value(l *espn.League, p *espn.Player, o Options) *Valuation {
 		v.SeasonAvg, v.RecentAvg = sa.Average, sa.Average
 	}
 
-	// Per-game expectation going forward: blend ESPN's season projection with
-	// observed production, trusting observed data more as games accumulate.
+	// This week.
+	v.OnBye = l.OnBye(p.ProTeamID, week)
+	v.InjuryFactor = WeekInjuryFactor(p.EffectiveInjury())
+	espnProj, hasProj := p.WeekProjection(season, week)
+	v.ESPNWeekProjection = espnProj
+
+	// Per-game expectation going forward. ESPN's projections carry the
+	// player's current role (a starter's injury, a benching), so they anchor
+	// it: this week's projection when he's healthy and playing, blended with
+	// ESPN's season projection, adjusted by his record against ESPN's
+	// numbers. Observed production is blended in, but never outweighs the
+	// projections: a hot September doesn't make up for a lost job.
 	projPerGame := 0.0
 	if sp, ok := p.SeasonProjection(season); ok {
 		projPerGame = sp.Average
@@ -154,6 +165,14 @@ func Value(l *espn.League, p *espn.Player, o Options) *Valuation {
 			projPerGame = sp.Points / gamesPerSeason
 		}
 	}
+	if hasProj && espnProj > 0 && !v.OnBye && v.InjuryFactor == 1 {
+		if projPerGame > 0 {
+			projPerGame = 0.6*espnProj + 0.4*projPerGame
+		} else {
+			projPerGame = espnProj
+		}
+	}
+	projPerGame *= v.AccuracyFactor
 	observed := 0.6*v.SeasonAvg + 0.4*v.RecentAvg
 	switch {
 	case v.WeeksPlayed == 0:
@@ -161,18 +180,13 @@ func Value(l *espn.League, p *espn.Player, o Options) *Valuation {
 	case projPerGame == 0:
 		v.PerGame = observed
 	default:
-		w := float64(v.WeeksPlayed) / (float64(v.WeeksPlayed) + 4)
+		w := math.Min(0.5, float64(v.WeeksPlayed)/(float64(v.WeeksPlayed)+6))
 		v.PerGame = w*observed + (1-w)*projPerGame
 	}
 
-	// This week.
-	v.OnBye = l.OnBye(p.ProTeamID, week)
-	v.InjuryFactor = WeekInjuryFactor(p.EffectiveInjury())
-	espnProj, hasProj := p.WeekProjection(season, week)
-	v.ESPNWeekProjection = espnProj
 	base := espnProj
 	if !hasProj {
-		base = v.PerGame
+		base = v.PerGame / v.AccuracyFactor
 	}
 	if v.OnBye {
 		v.WeekProjection = 0
@@ -196,7 +210,7 @@ func Value(l *espn.League, p *espn.Player, o Options) *Valuation {
 		}
 	}
 	ros := rosInjuryFactor(p.EffectiveInjury(), o)
-	v.ROSValue = v.PerGame * v.AccuracyFactor * float64(v.RemainingGames) * ros
+	v.ROSValue = v.PerGame * float64(v.RemainingGames) * ros
 
 	v.addNotes(o)
 	return v

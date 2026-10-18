@@ -8,6 +8,7 @@
 
   "max_acquisitions_per_run": 2,
   "min_pickup_gain": 5,
+  "allow_lower_week_pickups": false,
   "free_agents_per_position": 25,
   "max_faab_fraction": 0.35,
 

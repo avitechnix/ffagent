@@ -37,6 +37,10 @@ type Config struct {
 	MinPickupGain         float64 `json:"min_pickup_gain"`
 	FreeAgentsPerPosition int     `json:"free_agents_per_position"`
 	MaxFAABFraction       float64 `json:"max_faab_fraction"`
+	// AllowLowerWeekPickups lets a pickup replace a player who projects more
+	// this week, for rest-of-season gains. Off by default: a pickup must
+	// project at least as many points this week as the player it drops.
+	AllowLowerWeekPickups bool `json:"allow_lower_week_pickups"`
 
 	// ThisWeekWeight is how much more this week's matchup counts than any
 	// single future week when valuing roster moves.

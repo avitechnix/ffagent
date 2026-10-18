@@ -30,6 +30,9 @@ func (s *state) planPickups(t *espn.Team) []Action {
 		}
 		best.gain = math.Inf(-1)
 		try := func(c, d *espn.Player) {
+			if d != nil && !cfg.AllowLowerWeekPickups && s.projectsLower(c, d) {
+				return
+			}
 			r := s.withMove(t.Roster, c, d)
 			if g := s.teamValue(r, cfg.ThisWeekWeight) - base; g > best.gain {
 				best.add, best.drop, best.roster, best.gain = c, d, r, g
@@ -71,6 +74,19 @@ func (s *state) planPickups(t *espn.Team) []Action {
 	return acts
 }
 
+// projectsLower reports whether c is expected to score fewer points than d
+// this week, by the agent's adjusted projection or by ESPN's. ESPN's is
+// skipped for a "next man up" whose teammate was just ruled out: ESPN is
+// slow to raise those, which is why the agent can beat others to them.
+func (s *state) projectsLower(c, d *espn.Player) bool {
+	cv, dv := s.val(c), s.val(d)
+	const eps = 0.05
+	if cv.WeekProjection+eps < dv.WeekProjection {
+		return true
+	}
+	return cv.OpportunityBoost == 0 && !cv.OnBye && !dv.OnBye && cv.ESPNWeekProjection+eps < dv.ESPNWeekProjection
+}
+
 // withMove returns a new roster with c added and d (if any) removed. For a
 // waiver claim the dropped player stays (as a pending drop) until it clears.
 func (s *state) withMove(roster []*espn.Player, c, d *espn.Player) []*espn.Player {
@@ -108,10 +124,10 @@ func (s *state) pickupAction(t *espn.Team, c, d *espn.Player, gain float64, faab
 			why = append(why, "replaces "+r.Name+" (IR)")
 		}
 	}
-	proj := fmt.Sprintf("%s projects %.1f pts this week and %.0f rest of season", c.Name, v.WeekProjection, v.ROSValue)
+	proj := fmt.Sprintf("%s projects %.1f pts this week (ESPN %.1f) and %.0f rest of season", c.Name, v.WeekProjection, v.ESPNWeekProjection, v.ROSValue)
 	if d != nil {
 		dv := s.val(d)
-		proj += fmt.Sprintf(" (vs %.1f and %.0f for %s)", dv.WeekProjection, dv.ROSValue, d.Name)
+		proj += fmt.Sprintf(" (vs %.1f (ESPN %.1f) and %.0f for %s)", dv.WeekProjection, dv.ESPNWeekProjection, dv.ROSValue, d.Name)
 	}
 	why = append(why, proj, fmt.Sprintf("team value +%.1f", gain))
 	if c.Status != pendingClaim {
