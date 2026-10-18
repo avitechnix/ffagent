@@ -3,9 +3,11 @@ package agent
 import (
 	"fmt"
 	"math"
+	"sort"
 	"strings"
 
 	"github.com/avitechnix/ffagent/internal/espn"
+	"github.com/avitechnix/ffagent/internal/lineup"
 )
 
 // planPickups finds the free-agent adds and waiver claims that most improve
@@ -23,20 +25,32 @@ func (s *state) planPickups(t *espn.Team) []Action {
 		open := size - activeCount(t)
 		drops := s.droppable(t)
 
+		thisWeek := s.weekTotal(t.Roster)
+
 		var best struct {
 			add, drop *espn.Player
 			roster    []*espn.Player
 			gain      float64
+			stash     bool
 		}
 		best.gain = math.Inf(-1)
 		try := func(c, d *espn.Player) {
+			stash := false
 			if d != nil && !cfg.AllowLowerWeekPickups && s.projectsLower(c, d) {
-				return
+				if !cfg.PlanStashes {
+					return
+				}
+				stash = true // only if this week's lineup doesn't change
 			}
 			r := s.withMove(t.Roster, c, d)
-			if g := s.teamValue(r, cfg.ThisWeekWeight) - base; g > best.gain {
-				best.add, best.drop, best.roster, best.gain = c, d, r, g
+			if stash && s.weekTotal(r) < thisWeek-0.05 {
+				return // the drop is in this week's lineup
 			}
+			g := s.teamValue(r, cfg.ThisWeekWeight) - base
+			if g <= best.gain || (stash && g < stashGainFactor*cfg.MinPickupGain) {
+				return
+			}
+			best.add, best.drop, best.roster, best.gain, best.stash = c, d, r, g, stash
 		}
 		for _, fa := range s.pool {
 			if taken[fa.ID] {
@@ -61,7 +75,7 @@ func (s *state) planPickups(t *espn.Team) []Action {
 			break
 		}
 
-		act := s.pickupAction(t, best.add, best.drop, best.gain, &faab)
+		act := s.pickupAction(t, best.add, best.drop, best.gain, &faab, best.stash, s.byeCover(t.Roster, best.roster, best.add))
 		if best.drop == nil && len(s.freedBy) > 0 {
 			act.Depends = []int{s.freedBy[0]} // uses the spot an IR move opened
 			s.freedBy = s.freedBy[1:]
@@ -72,6 +86,55 @@ func (s *state) planPickups(t *espn.Team) []Action {
 		t.Roster = best.roster
 	}
 	return acts
+}
+
+// stashGainFactor: a stash (a pickup that projects less this week than his
+// drop) must be worth this many times min_pickup_gain, since it pays off
+// only later.
+const stashGainFactor = 2
+
+// weekTotal is this week's best lineup total for a roster.
+func (s *state) weekTotal(roster []*espn.Player) float64 {
+	return lineup.Optimize(s.l, startable(roster), s.weekScorer(0)).Total
+}
+
+// byeCover names the weeks a pickup matters most because players at his
+// position are on bye, e.g. "covers week 9, when CeeDee Lamb is on bye".
+func (s *state) byeCover(before, after []*espn.Player, c *espn.Player) string {
+	oldF, _ := s.futureRoster(before)
+	newF, _ := s.futureRoster(after)
+	oldW, starts := s.futureLineups(oldF)
+	newW, _ := s.futureLineups(newF)
+	weeks := s.futureWeeks()
+	if len(weeks) == 0 {
+		return ""
+	}
+	delta := make([]float64, len(weeks))
+	for i := range weeks {
+		delta[i] = newW[i] - oldW[i]
+	}
+	typical := append([]float64(nil), delta...)
+	sort.Float64s(typical)
+	median := typical[len(typical)/2]
+	var parts []string
+	for i, fw := range weeks {
+		if delta[i] < 3 || delta[i] < median+3 {
+			continue
+		}
+		var out []string
+		for _, p := range oldF {
+			if starts[p.ID] && p.Position == c.Position && s.l.OnBye(p.ProTeamID, fw.week) {
+				out = append(out, p.Name)
+			}
+		}
+		if len(out) > 0 {
+			parts = append(parts, fmt.Sprintf("week %d, when %s %s on bye", fw.week, strings.Join(out, " and "), isAre(len(out))))
+		}
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return "covers " + strings.Join(parts, "; ")
 }
 
 // projectsLower reports whether c is expected to score fewer points than d
@@ -112,19 +175,29 @@ func (s *state) withMove(roster []*espn.Player, c, d *espn.Player) []*espn.Playe
 	return append(out, c)
 }
 
-func (s *state) pickupAction(t *espn.Team, c, d *espn.Player, gain float64, faab *int) Action {
+func (s *state) pickupAction(t *espn.Team, c, d *espn.Player, gain float64, faab *int, stash bool, cover string) Action {
 	week := s.l.CurrentWeek
 	v := s.val(c)
 	items := []espn.TxnItem{espn.AddItem(c.ID, t.ID)}
-	summary := fmt.Sprintf("Add %s (%s, %s)", c.Name, c.Position, c.ProTeam)
+	verb := "Add"
+	if stash {
+		verb = "Stash"
+	}
+	summary := fmt.Sprintf("%s %s (%s, %s)", verb, c.Name, c.Position, c.ProTeam)
 	if d != nil {
 		items = append(items, espn.DropItem(d.ID, t.ID))
 		summary += fmt.Sprintf(", drop %s (%s)", d.Name, d.Position)
 	}
 	// Lead with the reason in plain words, then the numbers behind it.
 	var why []string
+	if stash {
+		why = append(why, fmt.Sprintf("a stash for later: %s isn't in your best lineup this week, so this week's projection doesn't change, and %s is worth more over the rest of the season", d.Name, c.Name))
+	}
 	if len(v.Notes) > 0 {
 		why = append(why, strings.Join(v.Notes, ", "))
+	}
+	if cover != "" {
+		why = append(why, cover)
 	}
 	if d == nil {
 		if r := s.replacementFor(c); r != nil {
@@ -160,9 +233,13 @@ func (s *state) pickupAction(t *espn.Team, c, d *espn.Player, gain float64, faab
 	}
 	bid := -1
 	if s.l.UsesFAAB {
-		bid = s.faabBid(c, gain, *faab)
+		var note string
+		bid, note = s.faabBid(c, gain, *faab, t)
 		*faab -= bid
 		summary += fmt.Sprintf(" — bid $%d", bid)
+		if note != "" {
+			why = append(why, note)
+		}
 	}
 	return Action{
 		Kind:    ActClaim,
@@ -170,20 +247,6 @@ func (s *state) pickupAction(t *espn.Team, c, d *espn.Player, gain float64, faab
 		Reason:  strings.Join(why, "; "),
 		Txn:     espn.NewWaiverClaim(s.member(), t.ID, week, bid, items...),
 	}
-}
-
-// faabBid scales the bid with the size of the upgrade: small upgrades get
-// token bids, big ones approach MaxFAABFraction of the remaining budget.
-// Kickers and defenses are streamed week to week, so they get a fraction.
-func (s *state) faabBid(c *espn.Player, gain float64, remaining int) int {
-	if remaining <= 0 {
-		return 0
-	}
-	frac := math.Min(s.a.Cfg.MaxFAABFraction, gain/(gain+100))
-	if c.Position == "K" || c.Position == "D/ST" {
-		frac *= 0.15
-	}
-	return min(remaining, int(math.Ceil(float64(remaining)*frac)))
 }
 
 // replacementFor returns the IR-stashed player a pickup at the same position

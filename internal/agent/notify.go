@@ -93,9 +93,10 @@ func proposalEmail(p *Plan, b *approval.Batch, items []*approval.Item, loc *time
 }
 
 const glossary = `"Team value" = projected points from your best lineup this week (weighted
-double) plus your best lineup for the rest of the season, with a little credit
-for bench depth. This week's projections are ESPN's, updated for injury news
-ESPN hasn't caught up on yet.`
+double) plus your best lineup in each later week (players on bye or still out
+score nothing that week; fantasy-playoff weeks count extra), with a little
+credit for bench depth. This week's projections are ESPN's, updated for injury
+news ESPN hasn't caught up on yet.`
 
 func leaguePrefix(p *Plan) string {
 	if p.League.Name == "" {

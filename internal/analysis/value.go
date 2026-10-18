@@ -43,6 +43,58 @@ type Valuation struct {
 	ROSValue       float64
 
 	Notes []string
+
+	// boostPerGame is a next-man-up's extra points per game, for the next
+	// boostGames games after this week's.
+	boostPerGame, boostGames float64
+	rosFactor                float64 // the injury discount in ROSValue
+}
+
+// Players on IR or suspended miss at least this many games after this
+// week's. IR is four games, counting this week.
+var returnDelay = map[string]int{espn.InjuryReserve: 3, espn.InjurySuspension: 1}
+
+// FutureWeek is the points a player is expected to score in a later week:
+// nothing on a bye, nothing while he's still out, then his per-game rate.
+// For a player on IR or suspended, the rate after his return is set so the
+// weeks add up to his rest-of-season value, which already prices in the
+// chance he's out longer. Others keep the same discount every week.
+func (v *Valuation) FutureWeek(l *espn.League, week int) float64 {
+	p := v.Player
+	if week <= l.CurrentWeek || week > l.FinalWeek || l.OnBye(p.ProTeamID, week) || v.PerGame <= 0 {
+		return 0
+	}
+	level := v.rosFactor
+	if delay, ok := returnDelay[p.EffectiveInjury()]; ok {
+		out, played := 0, 0 // games missed / left after his return, counting this week's
+		for w := l.CurrentWeek; w <= l.FinalWeek; w++ {
+			if l.OnBye(p.ProTeamID, w) {
+				continue
+			}
+			if w <= l.CurrentWeek+delay {
+				out++
+			} else {
+				played++
+			}
+		}
+		if week <= l.CurrentWeek+delay || played == 0 {
+			return 0
+		}
+		level = math.Min(1, level*float64(out+played)/float64(played))
+	}
+	pts := v.PerGame * level
+	if v.boostGames > 0 {
+		n := 0 // which future game this is
+		for w := l.CurrentWeek + 1; w <= week; w++ {
+			if !l.OnBye(p.ProTeamID, w) {
+				n++
+			}
+		}
+		if float64(n) <= math.Ceil(v.boostGames) {
+			pts += v.boostPerGame * math.Min(1, v.boostGames-float64(n-1))
+		}
+	}
+	return pts
 }
 
 // Options tunes the valuation model.
@@ -253,6 +305,7 @@ func Value(l *espn.League, p *espn.Player, o Options) *Valuation {
 		}
 	}
 	ros := rosInjuryFactor(p.EffectiveInjury(), o)
+	v.rosFactor = ros
 	v.ROSValue = v.PerGame * float64(v.RemainingGames) * ros
 
 	v.addNotes(o)

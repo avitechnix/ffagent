@@ -194,6 +194,8 @@ type League struct {
 	FinalWeek            int
 	LineupSlotCounts     map[int]int
 	MatchupPeriods       map[int][]int // matchup period -> scoring periods
+	RegularSeason        int           // matchup periods before the fantasy playoffs (0 = unknown)
+	PlayoffTeams         int
 	UsesFAAB             bool
 	FAABBudget           int
 	Teams                []*Team
@@ -332,6 +334,23 @@ func (l *League) AnyGameLive(now time.Time) bool {
 func (l *League) GameStarted(proTeamID, week int, now time.Time) bool {
 	g, ok := l.ProGames[proTeamID][week]
 	return ok && !g.Start.IsZero() && !now.Before(g.Start)
+}
+
+// PlayoffWeek reports whether a scoring period is in the fantasy playoffs.
+func (l *League) PlayoffWeek(week int) bool {
+	if l.RegularSeason <= 0 {
+		return false
+	}
+	for mp, weeks := range l.MatchupPeriods {
+		if mp > l.RegularSeason {
+			for _, w := range weeks {
+				if w == week {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }
 
 // RemainingWeeks returns the regular and playoff scoring periods from the

@@ -44,6 +44,11 @@ type Agent struct {
 	// Confirm, when set, is asked before each move in Execute; a move only
 	// runs if it returns true.
 	Confirm func(Action) bool
+
+	// The league's waiver claims this season (see loadBids).
+	bids     []espn.WaiverBid
+	bidsAt   time.Time
+	bidsWeek int
 }
 
 // New returns an agent with default valuation options.
@@ -134,6 +139,8 @@ type state struct {
 	irReplacements []*espn.Player // players moved to IR who need replacing
 	freedBy        []int          // indexes of IR moves that opened a roster spot
 	warnings       []string
+	future         []futureWeek       // weeks after this one (see futureWeeks)
+	weekly         map[[2]int]float64 // {player, week} -> FutureWeek
 }
 
 func (s *state) warn(msg string) { s.warnings = append(s.warnings, msg) }
@@ -168,6 +175,7 @@ func (a *Agent) Plan(ctx context.Context) (*Plan, error) {
 	p.Me = me
 
 	s := a.newState(l, me)
+	a.loadBids(ctx, l)
 	pool, err := a.loadPool(ctx, l)
 	if err != nil {
 		p.Warnings = append(p.Warnings, "free agents: "+err.Error())
@@ -196,7 +204,7 @@ func (a *Agent) Plan(ctx context.Context) (*Plan, error) {
 
 // newState values every rostered player, with injury news applied.
 func (a *Agent) newState(l *espn.League, me *espn.Team) *state {
-	s := &state{a: a, l: l, me: me, values: map[int]*analysis.Valuation{}, added: map[int]bool{}}
+	s := &state{a: a, l: l, me: me, values: map[int]*analysis.Valuation{}, added: map[int]bool{}, weekly: map[[2]int]float64{}}
 	for _, t := range l.Teams {
 		for _, pl := range t.Roster {
 			a.applyNews(pl)
@@ -352,14 +360,32 @@ func (s *state) weekScorer(lambda float64) lineup.Scorer {
 	}
 }
 
-// rosScorer scores players by expected points per remaining week.
-func (s *state) rosScorer() lineup.Scorer {
-	weeks := float64(max(1, len(s.l.RemainingWeeks())))
-	return func(p *espn.Player) float64 { return s.val(p).ROSValue / weeks }
+// futureWeek is one later week and how much it counts.
+type futureWeek struct {
+	week   int
+	weight float64
+}
+
+// futureWeeks are the weeks after this one, with fantasy-playoff weeks
+// weighted by playoff_week_weight.
+func (s *state) futureWeeks() []futureWeek {
+	if s.future == nil {
+		s.future = []futureWeek{}
+		for w := s.l.CurrentWeek + 1; w <= s.l.FinalWeek; w++ {
+			fw := futureWeek{week: w, weight: 1}
+			if s.l.PlayoffWeek(w) {
+				fw.weight = s.a.Cfg.PlayoffWeekWeight
+			}
+			s.future = append(s.future, fw)
+		}
+	}
+	return s.future
 }
 
 // teamValue scores a roster: this week's best lineup (weighted), the best
-// rest-of-season lineup over future weeks, and a little credit for depth.
+// lineup in each later week (players on bye or still out score nothing
+// that week, so depth that covers them counts), and a little credit for
+// the bench.
 func (s *state) teamValue(roster []*espn.Player, weekWeight float64) float64 {
 	week := 0.0
 	if weekWeight > 0 {
@@ -367,9 +393,26 @@ func (s *state) teamValue(roster []*espn.Player, weekWeight float64) float64 {
 		// matters for who starts, which the lineup optimizer handles.
 		week = lineup.Optimize(s.l, startable(roster), s.weekScorer(0)).Total
 	}
-	// Rest of season: ignore this week's locks; pending claims count.
-	future := make([]*espn.Player, 0, len(roster))
-	var irStash float64
+	future, irStash := s.futureRoster(roster)
+	perWeek, starts := s.futureLineups(future)
+	total := 0.0
+	for i, fw := range s.futureWeeks() {
+		total += fw.weight * perWeek[i]
+	}
+	var bench float64
+	for _, p := range future {
+		if !starts[p.ID] {
+			bench += s.val(p).ROSValue
+		}
+	}
+	return weekWeight*week + total + s.a.Cfg.BenchDepthWeight*(bench+irStash)
+}
+
+// futureRoster is the roster as it stands after this week: pending drops
+// gone, this week's locks irrelevant. Players in IR slots count only as a
+// stash.
+func (s *state) futureRoster(roster []*espn.Player) (future []*espn.Player, irStash float64) {
+	future = make([]*espn.Player, 0, len(roster))
 	for _, p := range roster {
 		if p.Status == pendingDrop {
 			continue
@@ -382,15 +425,109 @@ func (s *state) teamValue(roster []*espn.Player, weekWeight float64) float64 {
 		c.Locked = false
 		future = append(future, &c)
 	}
-	ros := lineup.Optimize(s.l, future, s.rosScorer())
+	return future, irStash
+}
+
+// futureLineups returns the best lineup's points in each later week (in
+// futureWeeks order) and who starts in any of them.
+//
+// Most weeks don't need their own optimization. If a week's values are at
+// most another solved week's, and equal for everyone who started in it
+// (say, only bench players are on bye), the same lineup is still best.
+// Weeks with the fewest players missing are solved first, so later weeks
+// can reuse them.
+func (s *state) futureLineups(future []*espn.Player) ([]float64, map[int]bool) {
+	type solved struct {
+		vals   []float64
+		starts []bool
+		total  float64
+	}
+	weeks := s.futureWeeks()
+	vals := make([][]float64, len(weeks))
+	missing := make([]int, len(weeks))
+	for i, fw := range weeks {
+		vals[i] = make([]float64, len(future))
+		for j, p := range future {
+			vals[i][j] = s.futureValue(p, fw.week)
+			if vals[i][j] == 0 {
+				missing[i]++
+			}
+		}
+	}
+	order := make([]int, len(weeks))
+	for i := range order {
+		order[i] = i
+	}
+	sort.SliceStable(order, func(a, b int) bool { return missing[order[a]] < missing[order[b]] })
+
+	var done []solved
+	starts := map[int]bool{}
+	perWeek := make([]float64, len(weeks))
+	for _, i := range order {
+		v := vals[i]
+		pts, found := 0.0, false
+		for _, d := range done {
+			if reusable(v, d.vals, d.starts) {
+				pts, found = d.total, true
+				break
+			}
+		}
+		if !found {
+			idx := map[int]int{}
+			for j, p := range future {
+				idx[p.ID] = j
+			}
+			a := lineup.Optimize(s.l, future, func(p *espn.Player) float64 { return v[idx[p.ID]] })
+			st := make([]bool, len(future))
+			for j, p := range future {
+				if espn.IsStartingSlot(a.Slots[p.ID]) {
+					st[j] = true
+					starts[p.ID] = true
+				}
+			}
+			pts = a.Total
+			done = append(done, solved{vals: v, starts: st, total: pts})
+		}
+		perWeek[i] = pts
+	}
+	return perWeek, starts
+}
+
+// reusable reports whether a solved lineup is still best for values v.
+func reusable(v, solvedVals []float64, starts []bool) bool {
+	for j := range v {
+		if v[j] > solvedVals[j] || (starts[j] && v[j] != solvedVals[j]) {
+			return false
+		}
+	}
+	return true
+}
+
+// futureValue is FutureWeek, remembered for the plan.
+func (s *state) futureValue(p *espn.Player, week int) float64 {
+	k := [2]int{p.ID, week}
+	if v, ok := s.weekly[k]; ok {
+		return v
+	}
+	v := s.val(p).FutureWeek(s.l, week)
+	s.weekly[k] = v
+	return v
+}
+
+// quickValue is a fast estimate of teamValue without this week: one
+// average-week lineup for the rest of the season. Trades are screened
+// with it before being valued week by week.
+func (s *state) quickValue(roster []*espn.Player) float64 {
+	future, irStash := s.futureRoster(roster)
+	weeks := float64(max(1, len(s.l.RemainingWeeks())))
+	ros := lineup.Optimize(s.l, future, func(p *espn.Player) float64 { return s.val(p).ROSValue / weeks })
 	var bench float64
 	for _, p := range future {
-		if ros.Slots[p.ID] == espn.SlotBench {
+		if !espn.IsStartingSlot(ros.Slots[p.ID]) {
 			bench += s.val(p).ROSValue
 		}
 	}
-	futureWeeks := float64(max(0, len(s.l.RemainingWeeks())-1))
-	return weekWeight*week + futureWeeks*ros.Total + s.a.Cfg.BenchDepthWeight*(bench+irStash)
+	return float64(len(s.futureWeeks()))*ros.Total + s.a.Cfg.BenchDepthWeight*(bench+irStash)
 }
 
 // protected reports whether the user asked us never to move this player.

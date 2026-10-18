@@ -99,6 +99,7 @@ func ApplyOpportunity(l *espn.League, players []*espn.Player, vals map[int]*Valu
 		}
 		if extra := floor - next.PerGame; extra > 0 {
 			next.ROSValue += extra * missed
+			next.boostPerGame, next.boostGames = max(next.boostPerGame, extra), max(next.boostGames, missed-1) // missed counts this week's game
 			lift = max(lift, extra)
 		}
 		if lift <= 0 {

@@ -17,10 +17,28 @@ A Go agent that manages your ESPN fantasy football team. Each run it:
 3. **Finds a replacement and works the waiver wire.** It pulls the top free agents and
    waiver players at each position. It tries every possible add/drop pair, including
    adds into a spot freed by an IR move, and keeps the pickups that most improve the
-   team. Team value means this week's best lineup (weighted up), plus the best ROS
-   lineup over future weeks, plus a little credit for bench depth. Free agents are
-   added right away. Waiver players get a claim with a FAAB bid sized to the upgrade
-   (kickers and defenses get small bids because they're streamable).
+   team. Team value means this week's best lineup (weighted up), plus the best lineup
+   in each later week, plus a little credit for bench depth.
+   - **Week by week.** A player on bye, or still out after a move to IR (at least four
+     games) or a suspension, scores nothing in those weeks. So a backup who covers a
+     starter's bye is worth something, and two quarterbacks with the same bye aren't
+     worth much more than one.
+   - **Playoffs.** Fantasy-playoff weeks count `playoff_week_weight` (1.25) times a
+     regular-season week.
+   - **Stashes.** A pickup that projects fewer points this week than the player he
+     replaces is proposed only as a "Stash": the dropped player isn't in this week's
+     best lineup, so this week's projection can't fall, and the stash must be worth at
+     least twice `min_pickup_gain` over the season (`plan_stashes`, on by default).
+
+   Free agents are added right away. Waiver players get a claim with a FAAB bid:
+   - **What he's worth to you** is sized to the upgrade, up to `max_faab_fraction` of
+     your budget. Kickers and defenses get small bids because they're streamable.
+   - **What it should take to win.** Once the league has at least 5 winning bids this
+     season, the bid is cut to the going rate: a percentile of this season's winning
+     bids for that position group, higher for players ESPN shows being added fast. It's
+     never more than $1 over the most any rival has left. If the going rate is more
+     than he's worth to you, the bid stays at his worth, and the proposal says he may go
+     elsewhere.
 4. **Sets the lineup to maximize your chance of beating this week's opponent.** It
    solves the lineup exactly (an assignment solver, so FLEX and superflex slots are
    handled correctly). Injured and bye-week players are benched. Players whose games
@@ -400,9 +418,10 @@ of the unattended options under [Storing credentials](#storing-credentials-encry
 - `max_acquisitions_per_run` and `min_pickup_gain`: how aggressive to be on the wire.
 - `allow_lower_week_pickups` (default `false`): a pickup must project at least as many
   points this week as the player it drops, by both ESPN's projection and the agent's.
-  The one exception is a "next man up" whose starter was just ruled out, since ESPN is
-  slow to raise those. Set it to `true` to allow rest-of-season stashes, e.g. a player
-  on bye this week.
+  The exceptions are a "next man up" whose starter was just ruled out, since ESPN is
+  slow to raise those, and stashes (`plan_stashes`), which leave this week's lineup
+  unchanged. Set it to `true` to allow any rest-of-season pickup, even one that lowers
+  this week's projection.
 - `track_record_adjustment` (default `0`): this week's projections are ESPN's own,
   changed only by injury news ESPN hasn't caught up on yet. Set this to a fraction,
   e.g. `0.1`, to let each player's record against ESPN's projections this season move
@@ -410,6 +429,10 @@ of the unattended options under [Storing credentials](#storing-credentials-encry
 - `this_week_weight`: how much this week's matchup counts compared with a future week.
   Raise it to chase this week's win harder.
 - `max_faab_fraction`: the most of your remaining budget one claim can use.
+- `playoff_week_weight` (default `1.25`): how much a fantasy-playoff week counts
+  compared with a regular-season week. Lower it if you're unlikely to make the playoffs.
+- `plan_stashes` (default `true`): allow stashes as described above. Set it to `false`
+  so that a pickup never projects fewer points this week than the player it drops.
 - `risk_aware`: turn the win-probability lineup logic on or off.
 - `auto_approve_ruled_out` (default `false`): see
   [Injury news and watch mode](#injury-news-and-watch-mode).
