@@ -38,6 +38,12 @@ type Player struct {
 	Locked     bool   // game started; lineup slot can't change
 
 	Stats []StatLine
+	// RefStats are the same player's weekly actuals and projections under
+	// ESPN's default PPR scoring, from its public player data. They're only
+	// used to compare a player with his projections in weeks the league
+	// didn't return a projection for (private leagues often return only the
+	// latest week's).
+	RefStats []StatLine
 }
 
 // EffectiveInjury is the best current view of a player's availability:
@@ -68,6 +74,22 @@ func (p *Player) find(season, week int, projected, weekly bool) (StatLine, bool)
 		}
 	}
 	return StatLine{}, false
+}
+
+// RefWeek returns a week's reference actual and projection (see RefStats).
+func (p *Player) RefWeek(season, week int) (actual, projected float64, ok bool) {
+	var okA, okP bool
+	for _, s := range p.RefStats {
+		if s.Season != season || !s.Weekly || s.Week != week {
+			continue
+		}
+		if s.Projected {
+			projected, okP = s.Points, true
+		} else {
+			actual, okA = s.Points, true
+		}
+	}
+	return actual, projected, okA && okP
 }
 
 // WeekActual returns actual points scored in a week.

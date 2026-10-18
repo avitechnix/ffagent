@@ -48,6 +48,12 @@ const cardJSON = `{"players": [{"id": 99, "player": {"id": 99, "stats": [
   {"seasonId": 2026, "scoringPeriodId": 5, "statSourceId": 1, "statSplitTypeId": 1, "appliedTotal": 13.0}
 ]}}]}`
 
+const refJSON = `{"players": [{"id": 99, "player": {"id": 99, "stats": [
+  {"seasonId": 2026, "scoringPeriodId": 3, "statSourceId": 0, "statSplitTypeId": 1, "appliedTotal": 18.0},
+  {"seasonId": 2026, "scoringPeriodId": 3, "statSourceId": 1, "statSplitTypeId": 1, "appliedTotal": 12.0},
+  {"seasonId": 2026, "scoringPeriodId": 0, "statSourceId": 1, "statSplitTypeId": 0, "appliedTotal": 999}
+]}}]}`
+
 const proJSON = `{"settings": {"proTeams": [{"id": 12, "abbrev": "kc", "byeWeek": 10, "proGamesByScoringPeriod": {
   "6": [{"date": 1792000000000, "homeProTeamId": 12, "awayProTeamId": 13}]}}]}}`
 
@@ -69,6 +75,11 @@ func TestFetchLeagueAndSubmit(t *testing.T) {
 			io.WriteString(w, `{"id":"tx1","status":"EXECUTED"}`)
 		case strings.Contains(r.URL.RawQuery, "proTeamSchedules_wl"):
 			io.WriteString(w, proJSON)
+		case strings.Contains(r.URL.Path, "/leaguedefaults/3"):
+			if !strings.Contains(r.Header.Get("x-fantasy-filter"), `"1120263"`) {
+				t.Errorf("reference request doesn't name weekly projections: %q", r.Header.Get("x-fantasy-filter"))
+			}
+			io.WriteString(w, refJSON)
 		case len(views) == 1 && views[0] == "kona_playercard":
 			f := r.Header.Get("x-fantasy-filter")
 			if !strings.Contains(f, `"filterIds":{"value":[99]}`) {
@@ -112,6 +123,12 @@ func TestFetchLeagueAndSubmit(t *testing.T) {
 	}
 	if act, ok := p.WeekActual(2026, 5); !ok || act != 21.5 {
 		t.Errorf("week 5 actual (from player card) = %v %v", act, ok)
+	}
+	if a, pr, ok := p.RefWeek(2026, 3); !ok || a != 18 || pr != 12 {
+		t.Errorf("reference week 3 = %v %v %v", a, pr, ok)
+	}
+	if _, ok := p.SeasonProjection(2026); !ok || len(p.RefStats) != 2 {
+		t.Errorf("reference stats must not replace league stats: %+v", p.RefStats)
 	}
 	if !l.OnBye(12, 10) || l.OnBye(12, 6) {
 		t.Errorf("bye detection wrong")

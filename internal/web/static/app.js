@@ -250,7 +250,7 @@ function renderRoster() {
   if (!data.roster || !data.roster.length) return box.append(empty("No roster yet", "Waiting for the agent's first check."));
   const ul = el("ul", { class: "list" });
   for (const p of data.roster) {
-    const acc = p.accuracy ? " · " + pct(p.accuracy) + " of ESPN proj" : "";
+    const acc = p.accuracy ? ` · ${pct(p.accuracy)} of ESPN proj (${p.acc_weeks} wk${p.acc_weeks === 1 ? "" : "s"})` : "";
     const notes = (p.notes || []).filter((n) => n !== p.injury);
     ul.append(el("li", {},
       el("span", { class: "slot", text: p.slot }),

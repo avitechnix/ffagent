@@ -121,6 +121,14 @@ func Value(l *espn.League, p *espn.Player, o Options) *Valuation {
 			continue // didn't play (bye/inactive/injured): not a game played
 		}
 		v.WeeklyActuals = append(v.WeeklyActuals, act)
+		if !okP || proj <= 0 {
+			// The league didn't return this week's projection: compare
+			// with ESPN's default-scoring actual and projection instead,
+			// which are consistent with each other.
+			if ra, rp, ok := p.RefWeek(season, w); ok && rp > 0 {
+				act, proj, okP = ra, rp, true
+			}
+		}
 		if okP && proj > 0 {
 			v.ActualTotal += act
 			v.ProjectedTotal += proj

@@ -202,7 +202,59 @@ func (c *Client) FetchLeague(ctx context.Context) (*League, error) {
 	if err := c.enrichStats(ctx, league, ids); err != nil {
 		return league, fmt.Errorf("espn: loading player history: %w", err)
 	}
+	var roster []*Player
+	for _, t := range league.Teams {
+		roster = append(roster, t.Roster...)
+	}
+	if err := c.addReference(ctx, league, roster); err != nil {
+		return league, fmt.Errorf("espn: loading projection history: %w", err)
+	}
 	return league, nil
+}
+
+// referencePath is ESPN's public player data under default PPR scoring.
+func (c *Client) referencePath() string {
+	return fmt.Sprintf("%s/seasons/%d/segments/0/leaguedefaults/3", c.ReadBase, c.Season)
+}
+
+// addReference loads RefStats for players: weekly actuals and projections
+// for every week so far, from ESPN's public player data, which (unlike a
+// private league's endpoint) returns past weekly projections.
+func (c *Client) addReference(ctx context.Context, l *League, players []*Player) error {
+	byID := map[int][]*Player{}
+	var ids []int
+	for _, p := range players {
+		if _, ok := byID[p.ID]; !ok {
+			ids = append(ids, p.ID)
+		}
+		byID[p.ID] = append(byID[p.ID], p)
+	}
+	for len(ids) > 0 {
+		batch := ids[:min(len(ids), 250)]
+		ids = ids[len(batch):]
+		filter := map[string]any{"players": map[string]any{
+			"filterIds":                         map[string]any{"value": batch},
+			"filterStatsForTopScoringPeriodIds": c.statsFilterValue(l.CurrentWeek),
+		}}
+		b, _ := json.Marshal(filter)
+		var resp rawPlayersResponse
+		u := c.referencePath() + "?" + viewsQuery(l.CurrentWeek, "kona_playercard")
+		if err := c.do(ctx, http.MethodGet, u, nil, map[string]string{"x-fantasy-filter": string(b)}, &resp); err != nil {
+			return err
+		}
+		for _, e := range resp.Players {
+			var weekly []StatLine
+			for _, s := range e.Player.statLines() {
+				if s.Weekly {
+					weekly = append(weekly, s)
+				}
+			}
+			for _, p := range byID[e.Player.ID] {
+				p.RefStats = weekly
+			}
+		}
+	}
+	return nil
 }
 
 func (c *Client) loadProSchedule(ctx context.Context, l *League) error {
@@ -334,6 +386,7 @@ func (c *Client) FreeAgents(ctx context.Context, l *League, position string, pro
 		p.Locked = l.GameStarted(p.ProTeamID, l.CurrentWeek, now)
 		out = append(out, p)
 	}
+	_ = c.addReference(ctx, l, out) // optional: without it, no track record
 	return out, nil
 }
 

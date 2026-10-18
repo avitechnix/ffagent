@@ -75,7 +75,8 @@ type AppRow struct {
 	ESPN     float64  `json:"espn"`
 	Proj     float64  `json:"proj"`
 	StdDev   float64  `json:"sd"`
-	Accuracy float64  `json:"accuracy,omitempty"` // actual/projected; 0 when unknown
+	Accuracy float64  `json:"accuracy,omitempty"`  // actual/projected; 0 when unknown
+	AccWeeks int      `json:"acc_weeks,omitempty"` // weeks behind Accuracy
 	Avg      float64  `json:"avg"`
 	Last3    float64  `json:"last3"`
 	ROS      float64  `json:"ros"`
@@ -152,7 +153,7 @@ func (w *Watcher) Snapshot() Snapshot {
 			row.Injury = st
 		}
 		if v.ProjectedTotal > 0 {
-			row.Accuracy = v.Accuracy
+			row.Accuracy, row.AccWeeks = v.Accuracy, v.ProjectedWeeks
 		}
 		s.Roster = append(s.Roster, row)
 	}

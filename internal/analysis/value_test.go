@@ -136,3 +136,23 @@ func TestOneProjectedWeekIsWeakEvidence(t *testing.T) {
 		t.Errorf("full history: %d weeks, accuracy %.2f, this week %.1f", v.ProjectedWeeks, v.Accuracy, v.WeekProjection)
 	}
 }
+
+// Private leagues may not return past weekly projections; ESPN's public
+// default-scoring lines fill them in.
+func TestReferenceFillsMissingProjections(t *testing.T) {
+	p := &espn.Player{ID: 1, Name: "Lamb", Position: "WR", ProTeamID: 1, InjuryStatus: espn.InjuryActive}
+	for w, a := range []float64{15.4, 35.3, 20.2, 41.3, 2.9} {
+		p.Stats = append(p.Stats, espn.StatLine{Season: season, Week: w + 1, Weekly: true, Points: a})
+		p.RefStats = append(p.RefStats, espn.StatLine{Season: season, Week: w + 1, Weekly: true, Points: a})
+	}
+	for w, pr := range []float64{17.26, 18.0, 17.31, 16.9, 19.13} {
+		p.RefStats = append(p.RefStats, espn.StatLine{Season: season, Week: w + 1, Weekly: true, Projected: true, Points: pr})
+	}
+	p.Stats = append(p.Stats,
+		espn.StatLine{Season: season, Week: 5, Weekly: true, Projected: true, Points: 19.13},
+		espn.StatLine{Season: season, Week: 6, Weekly: true, Projected: true, Points: 18.61})
+	v := Value(league(6), p, DefaultOptions())
+	if v.ProjectedWeeks != 5 || v.Accuracy < 1.25 || v.WeekProjection < 18.61 {
+		t.Errorf("%d weeks, accuracy %.2f, this week %.1f", v.ProjectedWeeks, v.Accuracy, v.WeekProjection)
+	}
+}
