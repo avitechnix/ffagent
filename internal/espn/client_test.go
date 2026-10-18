@@ -70,8 +70,13 @@ func TestFetchLeagueAndSubmit(t *testing.T) {
 		case strings.Contains(r.URL.RawQuery, "proTeamSchedules_wl"):
 			io.WriteString(w, proJSON)
 		case len(views) == 1 && views[0] == "kona_playercard":
-			if !strings.Contains(r.Header.Get("x-fantasy-filter"), `"filterIds":{"value":[99]}`) {
-				t.Errorf("bad filter %q", r.Header.Get("x-fantasy-filter"))
+			f := r.Header.Get("x-fantasy-filter")
+			if !strings.Contains(f, `"filterIds":{"value":[99]}`) {
+				t.Errorf("bad filter %q", f)
+			}
+			// Past weekly projections only come back when named by ID.
+			if !strings.Contains(f, `"1120261"`) || !strings.Contains(f, `"102026"`) || strings.Contains(f, `"1022026"`) {
+				t.Errorf("filter doesn't request weekly projections by week: %q", f)
 			}
 			io.WriteString(w, cardJSON)
 		default:

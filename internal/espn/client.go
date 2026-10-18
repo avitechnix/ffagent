@@ -235,14 +235,19 @@ func (c *Client) loadProSchedule(ctx context.Context, l *League) error {
 	return nil
 }
 
-// statsFilterValue asks ESPN to include weekly stat lines (actual and
-// projected) plus season totals and projections in player responses.
-func (c *Client) statsFilterValue() map[string]any {
+// statsFilterValue asks ESPN to include, in player responses, weekly
+// actuals for recent scoring periods, season totals and projections, and
+// ESPN's weekly projection for every week so far. Stat line IDs are
+// {source}{split}{season}[{week}]: "002026" is 2026 actual season totals,
+// "102026" the 2026 season projection, "1120265" the week 5 projection.
+// ESPN only returns past weekly projections when they're named this way.
+func (c *Client) statsFilterValue(week int) map[string]any {
 	y := strconv.Itoa(c.Season)
-	return map[string]any{
-		"value":           20,
-		"additionalValue": []string{"00" + y, "10" + y, "002" + y, "102" + y},
+	ids := []string{"00" + y, "10" + y}
+	for w := 1; w <= week; w++ {
+		ids = append(ids, "11"+y+strconv.Itoa(w))
 	}
+	return map[string]any{"value": 20, "additionalValue": ids}
 }
 
 func (c *Client) enrichStats(ctx context.Context, l *League, ids []int) error {
@@ -252,7 +257,7 @@ func (c *Client) enrichStats(ctx context.Context, l *League, ids []int) error {
 	filter := map[string]any{
 		"players": map[string]any{
 			"filterIds":                         map[string]any{"value": ids},
-			"filterStatsForTopScoringPeriodIds": c.statsFilterValue(),
+			"filterStatsForTopScoringPeriodIds": c.statsFilterValue(l.CurrentWeek),
 		},
 	}
 	b, _ := json.Marshal(filter)
@@ -307,7 +312,7 @@ func (c *Client) FreeAgents(ctx context.Context, l *League, position string, pro
 		"limit":                             limit,
 		"sortPercOwned":                     map[string]any{"sortPriority": 1, "sortAsc": false},
 		"sortDraftRanks":                    map[string]any{"sortPriority": 100, "sortAsc": true, "value": "STANDARD"},
-		"filterStatsForTopScoringPeriodIds": c.statsFilterValue(),
+		"filterStatsForTopScoringPeriodIds": c.statsFilterValue(l.CurrentWeek),
 	}
 	if slot, ok := PositionSlot[position]; ok {
 		players["filterSlotIds"] = map[string]any{"value": []int{slot}}

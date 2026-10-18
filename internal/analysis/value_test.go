@@ -2,6 +2,7 @@ package analysis
 
 import (
 	"math"
+	"strings"
 	"testing"
 
 	"github.com/avitechnix/ffagent/internal/espn"
@@ -99,5 +100,39 @@ func TestMissedGamesAreNotGamesPlayed(t *testing.T) {
 	v := Value(league(6), p, DefaultOptions())
 	if v.WeeksPlayed != 3 || v.SeasonAvg != 12 {
 		t.Errorf("played %d at %.1f a game, want 3 at 12", v.WeeksPlayed, v.SeasonAvg)
+	}
+}
+
+// CeeDee Lamb, 2026 weeks 1-5, when only week 5's projection was known: a
+// single bad week must not be read as five weeks of missing projections.
+func TestOneProjectedWeekIsWeakEvidence(t *testing.T) {
+	p := &espn.Player{ID: 1, Name: "Lamb", Position: "WR", ProTeamID: 1, InjuryStatus: espn.InjuryActive}
+	for w, a := range []float64{15.4, 35.3, 20.2, 41.3, 2.9} {
+		p.Stats = append(p.Stats, espn.StatLine{Season: season, Week: w + 1, Weekly: true, Points: a})
+	}
+	p.Stats = append(p.Stats,
+		espn.StatLine{Season: season, Week: 5, Weekly: true, Projected: true, Points: 19.13},
+		espn.StatLine{Season: season, Week: 6, Weekly: true, Projected: true, Points: 18.61},
+		espn.StatLine{Season: season, Projected: true, Points: 224.16, Average: 18.68})
+	v := Value(league(6), p, DefaultOptions())
+	if v.ProjectedWeeks != 1 {
+		t.Fatalf("projected weeks %d, want 1", v.ProjectedWeeks)
+	}
+	if v.AccuracyFactor < 0.85 {
+		t.Errorf("accuracy factor %.2f from one week; this week %.1f vs ESPN 18.61", v.AccuracyFactor, v.WeekProjection)
+	}
+	for _, n := range v.Notes {
+		if strings.Contains(n, "projections") {
+			t.Errorf("note %q from a single week", n)
+		}
+	}
+
+	// With every week's projection (what ESPN returns now), he's beating them.
+	for w, pr := range []float64{17.26, 18.0, 17.31, 16.9} {
+		p.Stats = append(p.Stats, espn.StatLine{Season: season, Week: w + 1, Weekly: true, Projected: true, Points: pr})
+	}
+	v = Value(league(6), p, DefaultOptions())
+	if v.ProjectedWeeks != 5 || v.Accuracy < 1.25 || v.WeekProjection < 18.61 {
+		t.Errorf("full history: %d weeks, accuracy %.2f, this week %.1f", v.ProjectedWeeks, v.Accuracy, v.WeekProjection)
 	}
 }
