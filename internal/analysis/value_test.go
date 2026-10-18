@@ -177,3 +177,30 @@ func TestDefaultUsesESPNProjection(t *testing.T) {
 		t.Errorf("out: %.2f", v.WeekProjection)
 	}
 }
+
+// Live games are projected the way ESPN's app does (checked against it in
+// week 6 of 2026, 5:18 left in the 1st quarter).
+func TestLiveGameProjection(t *testing.T) {
+	live := func(pos string, pre, act, left float64) float64 {
+		p := &espn.Player{ID: 1, Position: pos, InjuryStatus: espn.InjuryActive, Locked: true, GameLeft: left,
+			Stats: []espn.StatLine{
+				{Season: season, Week: 6, Weekly: true, Projected: true, Points: pre},
+				{Season: season, Week: 6, Weekly: true, Points: act}}}
+		return Value(league(6), p, DefaultOptions()).WeekProjection
+	}
+	left := (3*900 + 318) / 3600.0
+	for _, c := range []struct {
+		name          string
+		pos           string
+		pre, act, app float64
+		left          float64
+	}{
+		{"Drake Maye", "QB", 20.25, 0.3, 17.28, left},
+		{"Patriots D/ST", "D/ST", 6.7, 11.0, 7.39, left},
+		{"final game", "WR", 14.84, 10.4, 10.4, 0},
+	} {
+		if got := live(c.pos, c.pre, c.act, c.left); math.Abs(got-c.app) > 0.01 {
+			t.Errorf("%s: %.2f, ESPN shows %.2f", c.name, got, c.app)
+		}
+	}
+}

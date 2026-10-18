@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -54,6 +55,12 @@ const refJSON = `{"players": [{"id": 99, "player": {"id": 99, "stats": [
   {"seasonId": 2026, "scoringPeriodId": 0, "statSourceId": 1, "statSplitTypeId": 0, "appliedTotal": 999}
 ]}}]}`
 
+const scoreboardJSON = `{"week": {"number": 6}, "events": [
+  {"competitions": [{"status": {"period": 1, "clock": 318, "type": {"state": "in"}},
+    "competitors": [{"team": {"id": "12"}}, {"team": {"id": "13"}}]}]},
+  {"competitions": [{"status": {"period": 4, "clock": 0, "type": {"state": "post"}},
+    "competitors": [{"team": {"id": "30"}}]}]}]}`
+
 const proJSON = `{"settings": {"proTeams": [{"id": 12, "abbrev": "kc", "byeWeek": 10, "proGamesByScoringPeriod": {
   "6": [{"date": 1792000000000, "homeProTeamId": 12, "awayProTeamId": 13}]}}]}}`
 
@@ -61,7 +68,7 @@ func TestFetchLeagueAndSubmit(t *testing.T) {
 	var posted Transaction
 	var postedRaw map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if c, err := r.Cookie("espn_s2"); err != nil || c.Value != "s2" {
+		if c, err := r.Cookie("espn_s2"); r.URL.Path != "/scoreboard" && (err != nil || c.Value != "s2") {
 			t.Errorf("missing espn_s2 cookie on %s", r.URL)
 		}
 		views := r.URL.Query()["view"]
@@ -75,6 +82,11 @@ func TestFetchLeagueAndSubmit(t *testing.T) {
 			io.WriteString(w, `{"id":"tx1","status":"EXECUTED"}`)
 		case strings.Contains(r.URL.RawQuery, "proTeamSchedules_wl"):
 			io.WriteString(w, proJSON)
+		case r.URL.Path == "/scoreboard":
+			if r.Header.Get("Cookie") != "" {
+				t.Errorf("cookies sent to the public scoreboard")
+			}
+			io.WriteString(w, scoreboardJSON)
 		case strings.Contains(r.URL.Path, "/leaguedefaults/3"):
 			if !strings.Contains(r.Header.Get("x-fantasy-filter"), `"1120263"`) {
 				t.Errorf("reference request doesn't name weekly projections: %q", r.Header.Get("x-fantasy-filter"))
@@ -97,7 +109,7 @@ func TestFetchLeagueAndSubmit(t *testing.T) {
 	defer srv.Close()
 
 	c := NewClient(123, 2026, secrets.New("s2"), secrets.New("abc-123"))
-	c.ReadBase, c.WriteBase = srv.URL, srv.URL
+	c.ReadBase, c.WriteBase, c.Scoreboard = srv.URL, srv.URL, srv.URL+"/scoreboard"
 	c.Now = func() time.Time { return time.UnixMilli(1791000000000) } // before kickoff
 
 	l, err := c.FetchLeague(context.Background())
@@ -129,6 +141,9 @@ func TestFetchLeagueAndSubmit(t *testing.T) {
 	}
 	if _, ok := p.SeasonProjection(2026); !ok || len(p.RefStats) != 2 {
 		t.Errorf("reference stats must not replace league stats: %+v", p.RefStats)
+	}
+	if g := l.Live[12]; math.Abs(g.Left-(2700+318)/3600.0) > 1e-9 || g.Final || !l.Live[30].Final {
+		t.Errorf("live games: %+v", l.Live)
 	}
 	if !l.OnBye(12, 10) || l.OnBye(12, 6) {
 		t.Errorf("bye detection wrong")

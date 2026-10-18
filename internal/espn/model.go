@@ -36,6 +36,9 @@ type Player struct {
 	Status     string // FREEAGENT, WAIVERS, ONTEAM
 	LineupSlot int    // SlotUnknown when not on a roster
 	Locked     bool   // game started; lineup slot can't change
+	// GameLeft is the fraction of this week's game still to play once it
+	// has started (Locked): 0 when it's over.
+	GameLeft float64
 
 	Stats []StatLine
 	// RefStats are the same player's weekly actuals and projections under
@@ -197,6 +200,7 @@ type League struct {
 	ByeWeeks             map[int]int // pro team -> bye week
 	ProGames             map[int]map[int]ProGame
 	ProTeamAbbrevs       map[int]string
+	Live                 map[int]LiveGame // pro team -> this week's game progress, when known
 }
 
 // ProTeamAbbrev returns the NFL team abbreviation for a pro team ID.
@@ -286,6 +290,38 @@ func (l *League) OnBye(proTeamID, week int) bool {
 	if games, ok := l.ProGames[proTeamID]; ok && len(games) > 0 {
 		_, plays := games[week]
 		return !plays
+	}
+	return false
+}
+
+// LiveGame is an NFL game's progress this week.
+type LiveGame struct {
+	Left  float64 // fraction of the game still to play: 1 before kickoff, 0 when final
+	Final bool
+}
+
+// GameLeft returns the fraction of a pro team's game this week still to
+// play. Without live data it estimates from the kickoff time, assuming
+// about 3 hours 10 minutes of real time per game.
+func (l *League) GameLeft(proTeamID, week int, now time.Time) float64 {
+	if g, ok := l.Live[proTeamID]; ok {
+		return g.Left
+	}
+	g, ok := l.ProGames[proTeamID][week]
+	if !ok || g.Start.IsZero() || now.Before(g.Start) {
+		return 1
+	}
+	return max(0, 1-now.Sub(g.Start).Minutes()/190)
+}
+
+// AnyGameLive reports whether some NFL game this week is in progress.
+func (l *League) AnyGameLive(now time.Time) bool {
+	for team := range l.ProGames {
+		if l.GameStarted(team, l.CurrentWeek, now) {
+			if left := l.GameLeft(team, l.CurrentWeek, now); left > 0 {
+				return true
+			}
+		}
 	}
 	return false
 }

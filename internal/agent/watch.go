@@ -179,6 +179,8 @@ func (w *Watcher) Tick(ctx context.Context) error {
 
 	full := w.Agent.Cfg.FullReplanMinutes
 	due := w.lastFull.IsZero() || now.Sub(w.lastFull) >= time.Duration(full)*time.Minute
+	// While games are on, re-plan every check so live scores stay current.
+	due = due || (w.latest != nil && w.latest.League.AnyGameLive(now))
 	if !baseline {
 		for _, c := range changes {
 			fmt.Fprintf(w.Out, "%s  INJURY  %s\n", stamp(now), c)

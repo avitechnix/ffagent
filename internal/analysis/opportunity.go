@@ -90,7 +90,7 @@ func ApplyOpportunity(l *espn.League, players []*espn.Player, vals map[int]*Valu
 		// and adding anyway would count the same snaps twice.
 		floor := share * hurtV.PerGame
 		lift := 0.0
-		if !next.OnBye {
+		if !next.OnBye && !next.Player.Locked { // once his game starts, his points tell the story
 			if f := floor * next.InjuryFactor; f > next.WeekProjection {
 				lift = f - next.WeekProjection
 				next.WeekProjection = f

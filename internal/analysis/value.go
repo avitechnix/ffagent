@@ -228,14 +228,22 @@ func Value(l *espn.League, p *espn.Player, o Options) *Valuation {
 	} else {
 		v.WeekProjection = base * v.AccuracyFactor * weekInjuryAdjustment(p, hasProj)
 	}
-	if act, ok := p.WeekActual(season, week); ok && p.Locked {
-		// Game is underway or done: treat banked points as the expectation.
-		v.WeekActual = act
-		v.WeekProjection = act
-	}
 	v.WeekStdDev = stdDev(v, p.Position)
 	if p.Locked {
-		v.WeekStdDev *= 0.3
+		// Game underway or over: points so far plus the pre-game projection
+		// for the part of the game still to play, the way ESPN's app
+		// projects live games. A defense's points can fall as it allows
+		// points, so ESPN blends its points so far with the projection
+		// instead.
+		act, _ := p.WeekActual(season, week)
+		left := math.Max(0, math.Min(1, p.GameLeft))
+		v.WeekActual = act
+		if p.Position == "D/ST" {
+			v.WeekProjection = act*(1-left) + v.WeekProjection*left
+		} else {
+			v.WeekProjection = act + v.WeekProjection*left
+		}
+		v.WeekStdDev *= math.Sqrt(left)
 	}
 
 	// Rest of season.
