@@ -19,6 +19,7 @@ type Valuation struct {
 	WeeksPlayed    int
 	ActualTotal    float64 // sum of actual points in weeks with a projection
 	ProjectedTotal float64 // sum of ESPN projections for those weeks
+	ProjectedWeeks int     // weeks played that had an ESPN projection
 	Accuracy       float64 // ActualTotal / ProjectedTotal (1.0 = met projections)
 	AccuracyFactor float64 // shrunk, clamped multiplier applied to projections
 	SeasonAvg      float64 // actual points per game played
@@ -57,7 +58,7 @@ type Options struct {
 
 // DefaultOptions are reasonable defaults.
 func DefaultOptions() Options {
-	return Options{AccuracyPriorWeeks: 4, MinAccuracy: 0.8, MaxAccuracy: 1.2, LongTermInjuryFactor: 0.45}
+	return Options{AccuracyPriorWeeks: 8, MinAccuracy: 0.8, MaxAccuracy: 1.2, LongTermInjuryFactor: 0.45}
 }
 
 // positionCV is the typical weekly coefficient of variation by position,
@@ -109,6 +110,7 @@ func Value(l *espn.League, p *espn.Player, o Options) *Valuation {
 
 	// Projection accuracy over completed weeks.
 	minDiff, maxDiff := math.Inf(1), math.Inf(-1)
+	projectedWeeks := 0
 	for w := 1; w < week; w++ {
 		act, okA := p.WeekActual(season, w)
 		if !okA {
@@ -122,6 +124,7 @@ func Value(l *espn.League, p *espn.Player, o Options) *Valuation {
 		if okP && proj > 0 {
 			v.ActualTotal += act
 			v.ProjectedTotal += proj
+			projectedWeeks++
 			d := act - proj
 			minDiff = math.Min(minDiff, d)
 			maxDiff = math.Max(maxDiff, d)
@@ -131,11 +134,13 @@ func Value(l *espn.League, p *espn.Player, o Options) *Valuation {
 	if !math.IsInf(minDiff, 0) {
 		v.BiggestMiss, v.BiggestBeat = minDiff, maxDiff
 	}
+	v.ProjectedWeeks = projectedWeeks
 	if v.ProjectedTotal > 0 {
 		v.Accuracy = v.ActualTotal / v.ProjectedTotal
-		n := float64(v.WeeksPlayed)
-		shrunk := (v.ActualTotal + o.AccuracyPriorWeeks*v.ProjectedTotal/math.Max(n, 1)) /
-			(v.ProjectedTotal + o.AccuracyPriorWeeks*v.ProjectedTotal/math.Max(n, 1))
+		// Shrink toward 100% with AccuracyPriorWeeks phantom weeks. Only
+		// weeks with both a projection and a result count as evidence.
+		prior := o.AccuracyPriorWeeks * v.ProjectedTotal / float64(projectedWeeks)
+		shrunk := (v.ActualTotal + prior) / (v.ProjectedTotal + prior)
 		v.AccuracyFactor = clamp(shrunk, o.MinAccuracy, o.MaxAccuracy)
 	}
 	if v.WeeksPlayed > 0 {
@@ -251,13 +256,15 @@ func (v *Valuation) addNotes(o Options) {
 	if st := p.EffectiveInjury(); st != espn.InjuryActive {
 		v.Notes = append(v.Notes, st)
 	}
-	if v.WeeksPlayed >= 3 {
+	if v.ProjectedWeeks >= 3 {
 		switch {
 		case v.Accuracy >= 1.15:
 			v.Notes = append(v.Notes, fmt.Sprintf("beating projections by %.0f%%", (v.Accuracy-1)*100))
 		case v.Accuracy <= 0.85:
 			v.Notes = append(v.Notes, fmt.Sprintf("missing projections by %.0f%%", (1-v.Accuracy)*100))
 		}
+	}
+	if v.WeeksPlayed >= 3 {
 		if v.SeasonAvg > 0 {
 			switch r := v.RecentAvg / v.SeasonAvg; {
 			case r >= 1.25:
