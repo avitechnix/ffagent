@@ -31,6 +31,7 @@ type NewsSource interface {
 type WatchState struct {
 	Statuses     map[int]SeenStatus   `json:"statuses"`
 	SeenArticles map[string]time.Time `json:"seen_articles"`
+	SeenOffers   map[string]time.Time `json:"seen_offers,omitempty"` // trade offers already reviewed
 	Acquisitions []Acquisition        `json:"acquisitions"`
 }
 
@@ -228,6 +229,7 @@ func (w *Watcher) act(ctx context.Context, now time.Time, fresh []news.Article) 
 	}
 	w.remember(p)
 	w.checkHealth(ctx, p, now)
+	w.reviewNewOffers(ctx, p, now)
 	w.printNews(p, fresh, now)
 
 	if a.Cfg.MaxAcquisitionsPerRun == 0 && used > 0 {

@@ -195,6 +195,12 @@ func digestEmail(st *approval.Store, p *Plan, b *approval.Batch, trades []*appro
 		body.WriteString("  None.\n")
 	}
 
+	if len(p.Offers) > 0 {
+		body.WriteString("\nTRADE OFFERS TO YOU (accept or decline them on ESPN)\n\n")
+		for _, r := range p.Offers {
+			fmt.Fprintf(&body, "- From %s: you get %s, give %s. Grade %s, %s: %s.\n", r.Partner.Name, names(r.Give), names(r.Get), r.Grade, strings.ToLower(r.Verdict), r.Reason)
+		}
+	}
 	if len(trades) > 0 {
 		body.WriteString("\nTRADE IDEAS (reply to this email to send an offer)\n\n")
 		for _, it := range trades {

@@ -219,6 +219,22 @@ main { padding: 14px 16px 24px; max-width: 640px; margin: 0 auto; }
 .actions button:disabled { opacity: .5; }
 .waiting { margin-top: 12px; font-size: 14px; color: var(--good); font-weight: 700; }
 
+/* trade offers */
+.move.offer::before { background: linear-gradient(var(--accent-2), var(--accent)); }
+.grade-row { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+.grade { width: 44px; height: 44px; border-radius: 14px; display: grid; place-items: center; font-size: 24px; font-weight: 800; color: #fff; }
+.grade.g-a, .grade.g-b { background: var(--good); }
+.grade.g-c { background: var(--warn); }
+.grade.g-d, .grade.g-f { background: var(--bad); }
+.verdict { font-size: 18px; font-weight: 750; }
+.trade-cols { display: grid; grid-template-columns: 1fr; gap: 10px; }
+.trade-side { display: grid; gap: 6px; }
+.trade-label { font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.trade-player { display: flex; align-items: center; gap: 10px; font-weight: 650; min-width: 0; }
+.trade-player .who { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.trade-player .meta { color: var(--faint); font-weight: 500; font-size: 13px; margin-left: auto; flex: none; }
+.btn-link { flex: 1; min-height: 48px; border-radius: 14px; display: grid; place-items: center; font-weight: 700; font-size: 16px; text-decoration: none; color: var(--accent); background: var(--accent-soft); }
+
 /* ask */
 .ask { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 12px; }
 .ask:empty { display: none; }

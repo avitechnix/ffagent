@@ -47,10 +47,23 @@ A Go agent that manages your ESPN fantasy football team. Each run it:
    upside or toward safety, and keeps the one with the highest win probability. When
    you're the underdog it starts boom/bust players; when you're the favorite it
    starts high-floor players.
-5. **Suggests trades.** It searches 1-for-1, 2-for-1 and 1-for-2 deals with every team.
-   A deal qualifies only if it raises your ROS lineup value and leaves the other team
-   no worse than a small tolerance by the same measure, so they have a reason to say
-   yes. It can send the offers for you.
+5. **Suggests trades and grades the offers you get.** It searches 1-for-1, 2-for-1 and
+   1-for-2 deals with every team. A deal qualifies only if it raises your team value
+   and leaves the other team no worse than a small tolerance by the same measure.
+   - **Realistic offers.** Most managers judge a trade by whether it helps their
+     lineup and whether they get about as many projected points as they give. Ideas
+     that fail that test are long shots and are left out. The rest are ranked by how
+     much they help you and how likely the other side is to accept, and each says
+     which ("they'd likely accept…" or "a fair ask…"). It can send the offers for
+     you.
+   - **Offers to you.** When another team sends you an offer, the agent grades it A–F
+     by what it does to your team value: Accept, Your call, Counter or Decline, with
+     the reason. You get it by email, as a notification, and as a card in the app's
+     Moves tab. When the offer falls short, it proposes a counter (one more of their
+     players, one fewer of yours, or a lesser player of yours), which you can approve
+     to send as a new offer. The agent never accepts or declines an offer itself; the
+     card and email link to your team on ESPN for that. Pending offers are also listed
+     in the daily summary.
 
 6. **Watches injury news and moves first.** `ffagent watch` polls ESPN's league-wide
    injury report and NFL headlines every few minutes. When a starter is ruled out, it
@@ -531,6 +544,9 @@ of this.
 - ESPN's fantasy API is **unofficial and undocumented**. Reading league data is
   well understood. The write endpoint (lineup, add/drop, waiver claims, trade offers)
   follows the payloads ESPN's own web app sends, but ESPN can change it without notice.
+  Reading the league's transaction log (FAAB history and offers made to you) follows
+  the format other ESPN clients use. If ESPN changes it, bids fall back to sizing by
+  the upgrade, and offers go ungraded.
   Try one command with `--apply` and check the result on espn.com before you schedule
   it.
 - **News coverage.** News comes from ESPN's injury report and headline tags. Status
