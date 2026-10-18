@@ -49,6 +49,9 @@ type Agent struct {
 	bids     []espn.WaiverBid
 	bidsAt   time.Time
 	bidsWeek int
+	// Pending trade offers to you (see loadOffers).
+	offers   []espn.TradeOffer
+	offersAt time.Time
 }
 
 // New returns an agent with default valuation options.
@@ -119,6 +122,7 @@ type Plan struct {
 	Moves    []lineup.Move
 	Actions  []Action // roster actions (IR, drops, adds, claims), in order
 	Trades   []TradeIdea
+	Offers   []OfferReview // pending offers other teams made you
 	Warnings []string
 
 	// The lineup as currently set on ESPN, for before/after comparisons.
@@ -197,6 +201,9 @@ func (a *Agent) Plan(ctx context.Context) (*Plan, error) {
 	p.Moves = lineup.Moves(work.Roster, p.Lineup)
 
 	p.Trades = s.findTrades(work)
+	if offers := a.loadOffers(ctx, l, me.ID); len(offers) > 0 {
+		p.Offers = s.reviewOffers(work, offers)
+	}
 	p.Values = s.values
 	p.Warnings = append(p.Warnings, s.warnings...)
 	return p, nil

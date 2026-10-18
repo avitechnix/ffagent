@@ -387,10 +387,39 @@ const KIND = {
   "TRADE-OFFER": ["trade", "Trade offer", ""],
 };
 
+// renderOffer shows a trade another team offered, with the agent's grade.
+// Offers are accepted or declined on ESPN; the agent never does it.
+function renderOffer(o) {
+  const side = (label, players) => el("div", { class: "trade-side" },
+    el("span", { class: "trade-label", text: label }),
+    ...(players && players.length ? players.map((p) => el("div", { class: "trade-player" },
+      avatar(p, { small: true }),
+      el("span", { class: "who", text: p.name }),
+      el("span", { class: "meta", text: [p.position, p.team, Math.round(p.ros) + " ROS"].filter(Boolean).join(" · ") }))) : [el("span", { class: "meta", text: "Nothing" })]));
+  const link = el("a", { class: "btn-link", href: o.link, target: "_blank", rel: "noopener noreferrer", text: "Open in ESPN to accept or decline" });
+  return el("article", { class: "card move offer" },
+    el("div", { class: "move-head" },
+      el("span", { class: "kind" }, icon("trade"), "Offer from " + o.partner),
+      when(o.expires) ? el("span", { class: "expires", text: "Expires " + when(o.expires) }) : null),
+    el("div", { class: "grade-row" },
+      el("span", { class: "grade g-" + o.grade.toLowerCase(), text: o.grade }),
+      el("span", { class: "verdict", text: o.verdict })),
+    el("div", { class: "trade-cols" }, side("You get", o.give), side("You give", o.get)),
+    el("p", { class: "why" }, el("b", { text: "Why: " }), o.reason),
+    o.counter ? el("div", { class: "note-row" }, el("span", { class: "needs", text: "A counter is waiting below: " + o.counter })) : null,
+    el("div", { class: "actions" }, link));
+}
+
 function renderMoves() {
   const box = $("moves");
   box.replaceChildren();
   const items = data.pending || [];
+  const offers = data.offers || [];
+  if (offers.length) {
+    box.append(title("Trade offers", offers.length + ""));
+    for (const o of offers) box.append(renderOffer(o));
+  }
+  if (!items.length && offers.length) return;
   if (!items.length) {
     box.append(empty("check", "You're all set", data.status.ready
       ? "When injury news or a better player shows up, proposed moves appear here with the reasoning. Last check " + (when(data.status.last_check) || "pending") + "."

@@ -18,7 +18,10 @@ type TradeIdea struct {
 	Get       []*espn.Player
 	MyGain    float64 // change in our rest-of-season team value
 	TheirGain float64 // change in theirs
+	Odds      string  // a rough read on whether they'd accept
 	Action    Action
+
+	oddsWeight float64
 }
 
 // findTrades searches 1-for-1, 2-for-1 and 1-for-2 trades with every team.
@@ -82,13 +85,18 @@ func (s *state) findTrades(me *espn.Team) []TradeIdea {
 				if theirGain < -cfg.TradeTolerance {
 					continue
 				}
-				ideas = append(ideas, TradeIdea{Partner: o, Give: give, Get: get, MyGain: myGain, TheirGain: theirGain})
+				idea := TradeIdea{Partner: o, Give: give, Get: get, MyGain: myGain, TheirGain: theirGain}
+				idea.Odds, idea.oddsWeight = s.acceptance(give, get, theirGain)
+				if idea.oddsWeight < 0.5 {
+					continue // a long shot: not worth an offer
+				}
+				ideas = append(ideas, idea)
 			}
 		}
 	}
 
-	// Favor trades good for us that they also have a reason to accept.
-	score := func(t TradeIdea) float64 { return t.MyGain + 0.5*min(t.TheirGain, t.MyGain) }
+	// Favor trades good for us that they're likely to accept.
+	score := func(t TradeIdea) float64 { return t.oddsWeight * tradeScore(t) }
 	sort.SliceStable(ideas, func(i, j int) bool { return score(ideas[i]) > score(ideas[j]) })
 
 	// Don't suggest the same player in multiple offers.
@@ -144,7 +152,7 @@ func (s *state) tradeAction(me *espn.Team, t TradeIdea) Action {
 	return Action{
 		Kind:    ActTrade,
 		Summary: fmt.Sprintf("Offer %s: give %s, get %s", t.Partner.Name, names(t.Give), names(t.Get)),
-		Reason:  fmt.Sprintf("+%.1f ROS team value for us, %+.1f for them", t.MyGain, t.TheirGain),
+		Reason:  strings.TrimSuffix(fmt.Sprintf("+%.1f ROS team value for us, %+.1f for them; %s", t.MyGain, t.TheirGain, t.Odds), "; "),
 		Txn:     espn.NewTradeProposal(s.member(), me.ID, s.l.CurrentWeek, expires, items...),
 	}
 }

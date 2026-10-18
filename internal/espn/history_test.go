@@ -41,3 +41,36 @@ func TestWaiverBids(t *testing.T) {
 		t.Errorf("bids %+v", bids)
 	}
 }
+
+func TestTradeOffers(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.Contains(r.Header.Get("x-fantasy-filter"), `"TRADE_PROPOSAL"`) {
+			t.Errorf("filter %s", r.Header.Get("x-fantasy-filter"))
+		}
+		w.Write([]byte(`{"transactions":[
+			{"id":"t1","type":"TRADE_PROPOSAL","status":"PENDING","teamId":4,"proposedDate":1789000000000,"expirationDate":1789200000000,"items":[
+				{"type":"TRADE","playerId":40,"fromTeamId":4,"toTeamId":1},
+				{"type":"TRADE","playerId":10,"fromTeamId":1,"toTeamId":4},
+				{"type":"TRADE","playerId":11,"fromTeamId":1,"toTeamId":4}]},
+			{"id":"mine","type":"TRADE_PROPOSAL","status":"PENDING","teamId":1,"items":[{"type":"TRADE","playerId":12,"fromTeamId":1,"toTeamId":5}]},
+			{"id":"done","type":"TRADE_PROPOSAL","status":"EXECUTED","teamId":6,"items":[{"type":"TRADE","playerId":13,"fromTeamId":1,"toTeamId":6}]},
+			{"id":"others","type":"TRADE_PROPOSAL","status":"PENDING","teamId":7,"items":[{"type":"TRADE","playerId":70,"fromTeamId":7,"toTeamId":8}]},
+			{"id":"three","type":"TRADE_PROPOSAL","status":"PENDING","teamId":7,"items":[
+				{"type":"TRADE","playerId":71,"fromTeamId":7,"toTeamId":1},{"type":"TRADE","playerId":80,"fromTeamId":8,"toTeamId":7}]}
+		]}`))
+	}))
+	defer srv.Close()
+	c := NewClient(1, 2026, secrets.New("s2"), secrets.New("{SW}"))
+	c.ReadBase = srv.URL
+	offers, err := c.TradeOffers(context.Background(), &League{CurrentWeek: 6}, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(offers) != 1 {
+		t.Fatalf("offers %+v", offers)
+	}
+	o := offers[0]
+	if o.ID != "t1" || o.FromTeam != 4 || len(o.Give) != 1 || o.Give[0] != 40 || len(o.Get) != 2 || o.Expires.UnixMilli() != 1789200000000 {
+		t.Errorf("offer %+v", o)
+	}
+}

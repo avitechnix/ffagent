@@ -23,6 +23,32 @@ type Snapshot struct {
 	OppLineup []AppStart `json:"opp_lineup,omitempty"`
 	// Chat is the Ask tab's recent questions and answers, oldest first.
 	Chat []AppQA `json:"chat,omitempty"`
+	// Offers are pending trade offers other teams made you, graded.
+	Offers []AppOffer `json:"offers,omitempty"`
+}
+
+// AppOffer is a trade someone offered you, with the agent's read on it.
+type AppOffer struct {
+	ID        string      `json:"id"`
+	Partner   string      `json:"partner"`
+	PartnerID int         `json:"partner_id"`
+	Give      []AppPlayer `json:"give"` // what they'd send you
+	Get       []AppPlayer `json:"get"`  // what you'd send them
+	Grade     string      `json:"grade"`
+	Verdict   string      `json:"verdict"`
+	Reason    string      `json:"reason"`
+	Counter   string      `json:"counter,omitempty"` // a better version, sent if you approve it in Moves
+	Expires   time.Time   `json:"expires,omitempty"`
+	Link      string      `json:"link"` // your team on ESPN, to accept or decline
+}
+
+// AppPlayer is a player in a trade.
+type AppPlayer struct {
+	ID       int     `json:"id"`
+	Name     string  `json:"name"`
+	Position string  `json:"position"`
+	Team     string  `json:"team"`
+	ROS      float64 `json:"ros"`
 }
 
 // AppStatus is the header: team, matchup, and what the agent is doing.
@@ -167,6 +193,20 @@ func (w *Watcher) Snapshot() Snapshot {
 			s.Status.OppTeamID, s.Status.OppRecord = m.Opponent.ID, recordString(m.Opponent)
 		}
 	}
+	for _, r := range p.Offers {
+		o := AppOffer{ID: r.Offer.ID, Partner: r.Partner.Name, PartnerID: r.Partner.ID, Grade: r.Grade, Verdict: r.Verdict,
+			Reason: r.Reason, Expires: r.Offer.Expires, Link: w.espnTeamURL(p)}
+		for _, pl := range r.Give {
+			o.Give = append(o.Give, appPlayer(p, pl))
+		}
+		for _, pl := range r.Get {
+			o.Get = append(o.Get, appPlayer(p, pl))
+		}
+		if r.Counter != nil {
+			o.Counter = r.Counter.Action.Summary
+		}
+		s.Offers = append(s.Offers, o)
+	}
 	roster := append([]*espn.Player(nil), p.Me.Roster...)
 	sort.SliceStable(roster, func(i, j int) bool { return slotOrder(roster[i].LineupSlot) < slotOrder(roster[j].LineupSlot) })
 	for _, pl := range roster {
@@ -274,6 +314,14 @@ func (w *Watcher) Decide(id int, approve bool) (AppItem, error) {
 	}
 	w.poke()
 	return appItem(w.approvals, it), nil
+}
+
+func appPlayer(p *Plan, pl *espn.Player) AppPlayer {
+	a := AppPlayer{ID: pl.ID, Name: pl.Name, Position: pl.Position, Team: pl.ProTeam}
+	if v := p.Values[pl.ID]; v != nil {
+		a.ROS = v.ROSValue
+	}
+	return a
 }
 
 func appItem(st *approval.Store, it *approval.Item) AppItem {
