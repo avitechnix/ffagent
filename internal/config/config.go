@@ -45,6 +45,10 @@ type Config struct {
 	// ThisWeekWeight is how much more this week's matchup counts than any
 	// single future week when valuing roster moves.
 	ThisWeekWeight float64 `json:"this_week_weight"`
+	// TrackRecordAdjustment lets a player's record against ESPN's
+	// projections this season move his projection by up to this fraction
+	// (0.2 = ±20%). 0, the default, uses ESPN's projections as they are.
+	TrackRecordAdjustment float64 `json:"track_record_adjustment"`
 	// BenchDepthWeight credits bench players' rest-of-season value.
 	BenchDepthWeight float64 `json:"bench_depth_weight"`
 	// RiskAware picks a riskier or safer lineup to maximize win probability.

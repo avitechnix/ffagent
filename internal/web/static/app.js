@@ -261,7 +261,7 @@ function renderRoster() {
       el("div", { class: "num" }, fmt1(p.proj), el("small", { text: Math.round(p.ros) + " ROS" }))));
   }
   box.append(el("h2", { class: "section-title", text: "This week · rest of season" }), el("div", { class: "card" }, ul));
-  box.append(el("p", { class: "muted small center", text: "Projections adjusted for each player's record against ESPN's, injuries and byes." }));
+  box.append(el("p", { class: "muted small center", text: "This week's projections are ESPN's, updated for injury news ESPN hasn't caught up on." }));
 }
 
 function renderHistory() {

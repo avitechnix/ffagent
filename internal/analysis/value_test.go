@@ -33,7 +33,7 @@ func withHistory(pos string, proj, actual []float64, next float64) *espn.Player 
 func TestOutperformerGetsBoostedButShrunk(t *testing.T) {
 	// Projected 10 every week, scored 15: 150% accuracy over 5 weeks.
 	p := withHistory("WR", []float64{10, 10, 10, 10, 10}, []float64{15, 15, 15, 15, 15}, 10)
-	v := Value(league(6), p, DefaultOptions())
+	v := Value(league(6), p, DefaultOptions().WithTrackRecord(0.2))
 	if math.Abs(v.Accuracy-1.5) > 1e-9 {
 		t.Fatalf("accuracy %.3f, want 1.5", v.Accuracy)
 	}
@@ -114,7 +114,7 @@ func TestOneProjectedWeekIsWeakEvidence(t *testing.T) {
 		espn.StatLine{Season: season, Week: 5, Weekly: true, Projected: true, Points: 19.13},
 		espn.StatLine{Season: season, Week: 6, Weekly: true, Projected: true, Points: 18.61},
 		espn.StatLine{Season: season, Projected: true, Points: 224.16, Average: 18.68})
-	v := Value(league(6), p, DefaultOptions())
+	v := Value(league(6), p, DefaultOptions().WithTrackRecord(0.2))
 	if v.ProjectedWeeks != 1 {
 		t.Fatalf("projected weeks %d, want 1", v.ProjectedWeeks)
 	}
@@ -131,7 +131,7 @@ func TestOneProjectedWeekIsWeakEvidence(t *testing.T) {
 	for w, pr := range []float64{17.26, 18.0, 17.31, 16.9} {
 		p.Stats = append(p.Stats, espn.StatLine{Season: season, Week: w + 1, Weekly: true, Projected: true, Points: pr})
 	}
-	v = Value(league(6), p, DefaultOptions())
+	v = Value(league(6), p, DefaultOptions().WithTrackRecord(0.2))
 	if v.ProjectedWeeks != 5 || v.Accuracy < 1.25 || v.WeekProjection < 18.61 {
 		t.Errorf("full history: %d weeks, accuracy %.2f, this week %.1f", v.ProjectedWeeks, v.Accuracy, v.WeekProjection)
 	}
@@ -154,5 +154,26 @@ func TestReferenceFillsMissingProjections(t *testing.T) {
 	v := Value(league(6), p, DefaultOptions())
 	if v.ProjectedWeeks != 5 || v.Accuracy < 1.25 || v.WeekProjection < 18.61 {
 		t.Errorf("%d weeks, accuracy %.2f, this week %.1f", v.ProjectedWeeks, v.Accuracy, v.WeekProjection)
+	}
+}
+
+// By default this week's projection is ESPN's, unless the injury report has
+// news ESPN's designation doesn't reflect yet.
+func TestDefaultUsesESPNProjection(t *testing.T) {
+	p := withHistory("WR", []float64{10, 10, 10, 10, 10}, []float64{15, 15, 15, 15, 15}, 18.61)
+	if v := Value(league(6), p, DefaultOptions()); v.WeekProjection != 18.61 {
+		t.Errorf("projected %.2f, ESPN 18.61", v.WeekProjection)
+	}
+	p.InjuryStatus = espn.InjuryQuestionable // ESPN's own tag: already in its number
+	if v := Value(league(6), p, DefaultOptions()); v.WeekProjection != 18.61 {
+		t.Errorf("questionable by ESPN: %.2f, want ESPN's 18.61", v.WeekProjection)
+	}
+	p.NewsStatus = espn.InjuryDoubtful // fresher news than ESPN's tag
+	if v := Value(league(6), p, DefaultOptions()); v.WeekProjection >= 18.61*0.5 {
+		t.Errorf("newly doubtful: %.2f should be discounted", v.WeekProjection)
+	}
+	p.NewsStatus, p.InjuryStatus = "", espn.InjuryOut // ESPN says out but still projects
+	if v := Value(league(6), p, DefaultOptions()); v.WeekProjection != 0 {
+		t.Errorf("out: %.2f", v.WeekProjection)
 	}
 }
