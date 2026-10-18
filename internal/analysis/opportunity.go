@@ -2,6 +2,7 @@ package analysis
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/avitechnix/ffagent/internal/espn"
@@ -104,6 +105,21 @@ func ApplyOpportunity(l *espn.League, players []*espn.Player, vals map[int]*Valu
 			continue // ESPN's numbers already reflect the new role
 		}
 		next.OpportunityBoost += lift
-		next.Notes = append(next.Notes, fmt.Sprintf("%s is %s, so he's next man up (about %.1f pts/wk)", hurt.Name, inj.Status, floor))
+		next.Notes = append(next.Notes, fmt.Sprintf("%s is %s, so he's next man up (about %.1f pts/wk)", hurt.Name, statusWords(inj.Status), floor))
 	}
+}
+
+// statusWords puts an injury designation in plain words for notes.
+func statusWords(status string) string {
+	switch status {
+	case espn.InjuryReserve:
+		return "on IR"
+	case espn.InjuryOut:
+		return "out"
+	case espn.InjuryDoubtful:
+		return "doubtful"
+	case espn.InjurySuspension:
+		return "suspended"
+	}
+	return strings.ToLower(status)
 }

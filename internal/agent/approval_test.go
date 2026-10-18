@@ -68,7 +68,7 @@ func TestNothingRunsWithoutApproval(t *testing.T) {
 		t.Fatalf("expected one proposal email, got %d", len(fm.sent))
 	}
 	msg := fm.sent[0]
-	for _, want := range []string{"Backup RB", "Why:", "Star RB is OUT, so he's next man up", "win probability", "approve all", "Expires:", "Needs: move 1", "first come, first served"} {
+	for _, want := range []string{"Backup RB", "Why:", "Star RB is out, so he's next man up", "win probability", "approve all", "Expires:", "Needs: move 1", "first come, first served"} {
 		if !strings.Contains(msg.Body, want) {
 			t.Errorf("proposal email missing %q:\n%s", want, msg.Body)
 		}
