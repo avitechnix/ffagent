@@ -4,8 +4,8 @@ set -euo pipefail
 [[ $EUID -eq 0 ]] || { echo "run with sudo" >&2; exit 1; }
 read -r -p "Remove ffagent, its config, encrypted vault and state? [y/N] " r </dev/tty
 [[ $r =~ ^[Yy] ]] || exit 0
-systemctl disable --now ffagent-watch.service 2>/dev/null || true
-rm -f /etc/systemd/system/ffagent-watch.service
+systemctl disable --now ffagent-watch.service ffagent-update.timer 2>/dev/null || true
+rm -f /etc/systemd/system/ffagent-watch.service /etc/systemd/system/ffagent-update.service /etc/systemd/system/ffagent-update.timer
 systemctl daemon-reload
 rm -f /usr/local/bin/ffagent /usr/local/bin/ffagentctl /etc/credstore.encrypted/ffagent-passphrase
 rm -rf /etc/ffagent /var/lib/ffagent

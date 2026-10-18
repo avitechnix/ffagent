@@ -266,6 +266,14 @@ function render() {
     : s.mode === "dry-run" ? "Dry run · logging only"
     : "Auto mode · moves run without asking";
 
+  const health = $("health");
+  const probs = s.health || [];
+  health.hidden = probs.length === 0;
+  health.replaceChildren(...(probs.length ? [
+    el("b", { text: probs.length === 1 ? "Heads up: the agent found a data problem" : `Heads up: the agent found ${probs.length} data problems` }),
+    el("ul", {}, probs.map((p) => el("li", { text: p }))),
+  ] : []));
+
   const waiting = data.pending ? data.pending.filter((i) => i.status === "pending").length : 0;
   const badge = $("badge");
   badge.hidden = waiting === 0;

@@ -86,13 +86,29 @@ Day to day:
 sudo ffagentctl logs -f        # what it sees and does
 sudo ffagentctl analyze        # also: matchup, lineup, waivers, trades, free-agents
 sudo ffagentctl mode apply     # or: mode dry-run
-sudo ffagentctl secrets set    # when ESPN cookies expire (you'll see 401 errors in the logs)
-sudo ./deploy/install.sh       # update after pulling new code; keeps config and vault
+sudo ffagentctl secrets set    # when ESPN cookies expire (the agent emails you when they do)
+sudo ffagentctl update         # pull the latest code and reinstall; keeps config and vault
 sudo ./deploy/uninstall.sh
 ```
 
 Settings are in `/etc/ffagent/config.json`. Restart after editing:
 `sudo systemctl restart ffagent-watch`.
+
+**Updates.** `sudo ffagentctl update` pulls your checkout (as its owner, not root),
+shows what changed, and reinstalls in your current mode. To update automatically
+once a week (Tuesdays, when no games are on), run `sudo ffagentctl auto-update on`.
+That builds and installs whatever is on your checkout's branch, so turn it on only if
+you trust where that branch comes from.
+
+**Health checks.** After every check of your league, the agent also checks the data
+it's working from. Problems show as a banner in the app and by email, with a daily
+reminder while they last and an all-clear when they're fixed. It looks for:
+
+- ESPN refusing the login (expired cookies) or repeated failures to read the league;
+- players with no ESPN projection this week;
+- missing past weekly projections (track records built from too few games);
+- this week's projections drifting from ESPN's with no injury news to explain it;
+- live game clocks being unavailable.
 
 ## iPhone app
 

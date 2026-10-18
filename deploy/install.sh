@@ -6,7 +6,8 @@
 #
 # Re-running it updates the binary and unit and keeps your config and vault.
 # Optional environment: LEAGUE_ID, TEAM_ID, AGENT_EMAIL, NOTIFY_EMAIL,
-# TIME_ZONE (skip the prompts), MODE=apply|dry-run (default: ask).
+# TIME_ZONE (skip the prompts), MODE=apply|dry-run (default: ask),
+# FFAGENT_UPDATE=1 (set by `ffagentctl update`: skips the test email).
 set -euo pipefail
 
 GO_VERSION=go1.27.2
@@ -137,6 +138,10 @@ fi
 
 # --- unit -------------------------------------------------------------------
 install -m 0644 "$SRC/deploy/ffagent-watch.service" "$UNIT"
+# Updates: `ffagentctl update` pulls this checkout; the weekly timer is off
+# until `ffagentctl auto-update on`.
+install -m 0644 "$SRC/deploy/ffagent-update.service" "$SRC/deploy/ffagent-update.timer" /etc/systemd/system/
+printf '%s\n' "$SRC" > "$ETC/source"; chmod 0644 "$ETC/source"
 [[ -f $ETC/watch.env ]] || { echo 'FFAGENT_WATCH_FLAGS=' > "$ETC/watch.env"; chmod 0644 "$ETC/watch.env"; }
 systemctl daemon-reload
 
@@ -167,8 +172,10 @@ TXT
   "$CTL" secrets set email </dev/tty || die "storing the app password failed; re-run: sudo ffagentctl secrets set email"
 fi
 
-say "Sending a test email"
-"$CTL" email-test </dev/null || die "email isn't working yet; fix the issue above, then re-run this installer (or: sudo ffagentctl email-test)"
+if [[ -z ${FFAGENT_UPDATE:-} ]]; then
+  say "Sending a test email"
+  "$CTL" email-test </dev/null || die "email isn't working yet; fix the issue above, then re-run this installer (or: sudo ffagentctl email-test)"
+fi
 
 # --- verify ------------------------------------------------------------------
 say "Checking the connection to your league (read-only)"
@@ -211,6 +218,7 @@ cat <<TXT
   sudo ffagentctl analyze        roster report (also: matchup, lineup, waivers, trades)
   sudo ffagentctl mode apply     email you moves to approve (or: mode dry-run)
   sudo ffagentctl email-test     check email sending and reply reading
+  sudo ffagentctl update         update to the latest version (or: auto-update on)
   sudo ffagentctl secrets set    refresh the ESPN cookies when they expire
   sudo ffagentctl secrets set email   replace the Gmail app password
   sudo $SRC/deploy/setup-phone.sh  turn on the iPhone app (over Tailscale)

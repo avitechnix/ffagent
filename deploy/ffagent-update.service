@@ -1,0 +1,9 @@
+# Weekly self-update, enabled with `sudo ffagentctl auto-update on`.
+[Unit]
+Description=Update ffagent from its git checkout
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/ffagentctl update

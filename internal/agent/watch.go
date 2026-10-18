@@ -80,6 +80,10 @@ type Watcher struct {
 	latestAt time.Time // when it was made
 	lastTick time.Time // last completed news check
 	wake     chan struct{}
+
+	health       Health
+	failures     int       // league reads failed in a row
+	healthMailed time.Time // last health email
 }
 
 // poke asks the run loop to process approvals now instead of within a minute.
@@ -215,9 +219,11 @@ func (w *Watcher) act(ctx context.Context, now time.Time, fresh []news.Article) 
 
 	p, err := a.Plan(ctx)
 	if err != nil {
+		w.noteFailure(ctx, err, now)
 		return err
 	}
 	w.remember(p)
+	w.checkHealth(ctx, p, now)
 	w.printNews(p, fresh, now)
 
 	if a.Cfg.MaxAcquisitionsPerRun == 0 && used > 0 {

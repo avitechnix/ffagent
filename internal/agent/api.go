@@ -41,6 +41,7 @@ type AppStatus struct {
 	PlannedAt    time.Time `json:"planned_at"`
 	Ready        bool      `json:"ready"` // false until the first plan is made
 	AskEnabled   bool      `json:"ask_enabled"`
+	Health       []string  `json:"health,omitempty"` // problems the agent's data checks found
 	MyTeamID     int       `json:"my_team_id"`
 	OppTeamID    int       `json:"opp_team_id,omitempty"`
 	OppRecord    string    `json:"opp_record,omitempty"`
@@ -127,6 +128,7 @@ func (w *Watcher) Snapshot() Snapshot {
 	}
 	s.Status.LastCheck = w.lastTick
 	s.Status.AskEnabled = w.Asker != nil
+	s.Status.Health = w.health.Problems
 
 	if st := w.approvals; st != nil {
 		for _, it := range st.Pending() {
