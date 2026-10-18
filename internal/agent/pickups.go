@@ -79,12 +79,19 @@ func (s *state) planPickups(t *espn.Team) []Action {
 // skipped for a "next man up" whose teammate was just ruled out: ESPN is
 // slow to raise those, which is why the agent can beat others to them.
 func (s *state) projectsLower(c, d *espn.Player) bool {
+	if c.Status == pendingClaim {
+		return false // the dropped player stays until the claim clears, so this week is unchanged
+	}
 	cv, dv := s.val(c), s.val(d)
 	const eps = 0.05
-	if cv.WeekProjection+eps < dv.WeekProjection {
+	cWeek, cESPN := cv.WeekProjection, cv.ESPNWeekProjection
+	if c.Locked {
+		cWeek, cESPN = 0, 0 // his game has started: none of this week's points would be ours
+	}
+	if cWeek+eps < dv.WeekProjection {
 		return true
 	}
-	return cv.OpportunityBoost == 0 && !cv.OnBye && !dv.OnBye && cv.ESPNWeekProjection+eps < dv.ESPNWeekProjection
+	return cv.OpportunityBoost == 0 && !cv.OnBye && !dv.OnBye && cESPN+eps < dv.ESPNWeekProjection
 }
 
 // withMove returns a new roster with c added and d (if any) removed. For a
@@ -124,10 +131,23 @@ func (s *state) pickupAction(t *espn.Team, c, d *espn.Player, gain float64, faab
 			why = append(why, "replaces "+r.Name+" (IR)")
 		}
 	}
-	proj := fmt.Sprintf("%s projects %.1f pts this week (ESPN %.1f) and %.0f rest of season", c.Name, v.WeekProjection, v.ESPNWeekProjection, v.ROSValue)
+	var proj string
+	switch {
+	case c.Locked:
+		// Points he's already scored this week can't count for us.
+		proj = fmt.Sprintf("%s's game this week has already started, so he'd help from next week: %.0f rest of season, %.1f per game", c.Name, v.ROSValue, v.PerGame)
+	case c.Status == pendingClaim:
+		proj = fmt.Sprintf("%s would join once waivers clear: %.0f rest of season, %.1f per game", c.Name, v.ROSValue, v.PerGame)
+	default:
+		proj = fmt.Sprintf("%s projects %.1f pts this week (ESPN %.1f) and %.0f rest of season", c.Name, v.WeekProjection, v.ESPNWeekProjection, v.ROSValue)
+	}
 	if d != nil {
 		dv := s.val(d)
-		proj += fmt.Sprintf(" (vs %.1f (ESPN %.1f) and %.0f for %s)", dv.WeekProjection, dv.ESPNWeekProjection, dv.ROSValue, d.Name)
+		if c.Locked || c.Status == pendingClaim {
+			proj += fmt.Sprintf(" (vs %.0f and %.1f per game for %s)", dv.ROSValue, dv.PerGame, d.Name)
+		} else {
+			proj += fmt.Sprintf(" (vs %.1f (ESPN %.1f) and %.0f for %s)", dv.WeekProjection, dv.ESPNWeekProjection, dv.ROSValue, d.Name)
+		}
 	}
 	why = append(why, proj, fmt.Sprintf("team value +%.1f", gain))
 	if c.Status != pendingClaim {
