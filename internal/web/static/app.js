@@ -101,14 +101,6 @@ const TEAM_COLORS = {
   TEN: "#0C2340", WSH: "#5A1414",
 };
 
-// Small NFL team logo, from the agent's image proxy.
-function teamLogo(abbr) {
-  if (!abbr || !TEAM_COLORS[abbr]) return null;
-  const img = el("img", { class: "tlogo", src: "img/t/" + abbr.toLowerCase() + ".png", alt: "", loading: "lazy", decoding: "async" });
-  img.addEventListener("error", () => img.remove());
-  return img;
-}
-
 function kickoff(iso) {
   if (!iso || iso.startsWith("0001")) return "";
   return new Date(iso).toLocaleString(undefined, { weekday: "short", hour: "numeric", minute: "2-digit" });
@@ -153,16 +145,18 @@ function countTo(node, key, to) {
   requestAnimationFrame(step);
 }
 
-// Player photo (team logo for a D/ST), served by the agent from ESPN's CDN.
-// Initials show until it loads, and stay if ESPN has no photo.
+// Player photo, served by the agent from ESPN's CDN, on a backdrop in his
+// team's colors. Initials show until it loads, and stay if ESPN has no
+// photo. A D/ST shows its team's abbreviation.
 function avatar(p, opts = {}) {
-  const initials = (p.name || "?").replace(/ D\/ST$/, "").split(/\s+/).map((w) => w[0]).slice(0, 2).join("").toUpperCase();
   const dst = p.position === "D/ST" || p.id < 0;
-  const src = dst ? (p.team ? "img/t/" + p.team.toLowerCase() + ".png" : null) : p.id > 0 ? "img/p/" + p.id + ".png" : null;
-  const wrap = el("span", { class: "av " + posClass(opts.slot || p.position, p.position) + (dst ? " logo-av" : "") + (opts.small ? " sm" : "") },
-    el("span", { class: "initials", text: initials }));
+  const initials = dst ? (p.team || "D/ST")
+    : (p.name || "?").split(/\s+/).map((w) => w[0]).slice(0, 2).join("").toUpperCase();
+  const src = !dst && p.id > 0 ? "img/p/" + p.id + ".png" : null;
   const tc = TEAM_COLORS[p.team];
-  if (tc && !dst) wrap.style.background = `radial-gradient(120% 90% at 50% 0%, color-mix(in srgb, ${tc} 55%, #fff) 0%, ${tc} 55%, color-mix(in srgb, ${tc} 70%, #000) 100%)`;
+  const wrap = el("span", { class: "av " + posClass(opts.slot || p.position, p.position) + (dst ? " team-av" : "") + (tc ? " tinted" : "") + (opts.small ? " sm" : "") },
+    el("span", { class: "initials", text: initials }));
+  if (tc) wrap.style.background = `radial-gradient(120% 90% at 50% 0%, color-mix(in srgb, ${tc} 55%, #fff) 0%, ${tc} 55%, color-mix(in srgb, ${tc} 70%, #000) 100%)`;
   if (src) {
     const img = el("img", { src, alt: "", loading: "lazy", decoding: "async" });
     img.addEventListener("load", () => wrap.classList.add("has-img"));
@@ -423,7 +417,7 @@ function playerCell(p, other, side) {
   const winning = other && p.proj > other.proj + 0.05;
   const info = el("div", { class: "pinfo" },
     el("span", { class: "pname", text: shortName(p) }),
-    el("span", { class: "sub" }, teamLogo(p.team), p.team || "", status || (p.opp ? el("span", { class: "game", text: gameLine(p) }) : null)),
+    el("span", { class: "sub" }, p.team || "", status || (p.opp ? el("span", { class: "game", text: gameLine(p) }) : null)),
     el("span", { class: "pts" },
       el("b", { text: fmt1(p.locked ? p.actual : p.proj) }),
       el("small", { text: p.locked ? (final ? "" : "proj " + fmt1(p.proj)) : "proj" })),
@@ -504,7 +498,7 @@ function renderRoster() {
         avatar(p, { slot: p.slot }),
         el("div", { class: "grow" },
           el("div", { class: "nm" }, p.name, p.injury ? el("span", { class: "tag inj", text: shortInjury(p.injury) }) : null),
-          el("div", { class: "sub game-line" }, teamLogo(p.team), el("span", { class: "team-txt", text: `${p.position} · ${p.team}` }), p.opp ? el("span", { class: "game", text: gameLine(p) }) : null),
+          el("div", { class: "sub game-line" }, el("span", { class: "team-txt", text: `${p.position} · ${p.team}` }), p.opp ? el("span", { class: "game", text: gameLine(p) }) : null),
           el("div", { class: "sub", text: `avg ${fmt1(p.avg)} · last 3 ${fmt1(p.last3)}${acc}` }),
           notes.length ? el("div", { class: "note", text: notes.join(" · ") }) : null,
           el("div", { class: "bar " + posClass(p.slot, p.position) }, el("div", { style: { width: Math.round(100 * (p.proj || 0) / max) + "%" } }))),

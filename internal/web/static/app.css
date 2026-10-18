@@ -366,7 +366,9 @@ main { padding: 14px 16px 24px; max-width: 640px; margin: 0 auto; }
   position: absolute; inset: 0; width: 100%; height: 100%; border-radius: 50%;
   object-fit: cover; object-position: center 15%; opacity: 0; transition: opacity .25s ease;
 }
-.av.logo-av img { object-fit: contain; padding: 15%; }
+.av.tinted .initials { color: #fff; text-shadow: 0 1px 2px rgba(0, 0, 0, .35); }
+.av.team-av .initials { font-size: 13px; letter-spacing: .04em; }
+.av.team-av.sm .initials { font-size: 10px; }
 .av.has-img img { opacity: 1; }
 .av.has-img .initials { visibility: hidden; }
 .av-slot {
@@ -386,15 +388,12 @@ main { padding: 14px 16px 24px; max-width: 640px; margin: 0 auto; }
 .list li .av { margin-bottom: 4px; }
 
 /* --- team logos, game info ---------------------------------------------- */
-.tlogo { width: 16px; height: 16px; object-fit: contain; vertical-align: -3px; margin-right: 4px; flex: none; }
 .h2h .sub { display: flex; align-items: center; gap: 4px; }
 .h2h .pl.opp .sub { justify-content: flex-end; }
-.h2h .sub .tlogo { margin-right: 0; }
 .h2h .sub .tag { margin-left: 2px; }
 .game { color: var(--faint); margin-left: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .h2h .game { margin-left: 2px; font-size: 11.5px; }
 .game-line { display: flex; align-items: center; min-width: 0; }
-.game-line .tlogo { margin-right: 5px; }
 
 /* --- hero: fantasy logos and margin ---------------------------------------- */
 .flogo {

@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"net/netip"
 	"net/url"
-	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -18,10 +17,11 @@ import (
 )
 
 // DefaultImageBase is ESPN's image CDN. Its resizer serves player headshots
-// and team logos at phone sizes.
+// at phone sizes.
 const DefaultImageBase = "https://a.espncdn.com"
 
-// Images fetches player headshots and team logos from ESPN's CDN and caches
+// Images fetches player headshots from ESPN's CDN (and fantasy team logos
+// from wherever their managers put them) and caches
 // them, so the app loads them from this server: the page's CSP stays
 // same-origin, and the phone never contacts ESPN.
 type Images struct {
@@ -31,7 +31,7 @@ type Images struct {
 	// can be on any host, so they're fetched with a client that refuses
 	// private and loopback addresses.
 	TeamLogo func(id int) string
-	// LogoClient fetches team logos (a public-addresses-only client when nil).
+	// LogoClient fetches fantasy team logos (a public-addresses-only client when nil).
 	LogoClient *http.Client
 
 	mu    sync.Mutex
@@ -53,12 +53,10 @@ const (
 	missingTTL     = 6 * time.Hour
 )
 
-var teamAbbrev = regexp.MustCompile(`^[a-z]{2,4}$`)
-
 // imagePath maps an app image path to the ESPN CDN path it comes from:
-// "p/4241389" is a player headshot, "t/jax" an NFL team logo. Nothing
-// else is accepted, so the proxy can only fetch those kinds of images from
-// the CDN. ("f/3", a fantasy team's logo, is resolved separately.)
+// "p/4241389" is a player headshot. Nothing else is accepted, so the proxy
+// can only fetch headshots from the CDN. ("f/3", a fantasy team's logo,
+// is resolved separately.)
 func imagePath(kind, key string) (string, bool) {
 	switch kind {
 	case "p":
@@ -67,12 +65,6 @@ func imagePath(kind, key string) (string, bool) {
 			return "", false
 		}
 		return fmt.Sprintf("/combiner/i?img=/i/headshots/nfl/players/full/%d.png&w=160&h=116&scale=crop&cquality=80", id), true
-	case "t":
-		key = strings.ToLower(key)
-		if !teamAbbrev.MatchString(key) {
-			return "", false
-		}
-		return fmt.Sprintf("/combiner/i?img=/i/teamlogos/nfl/500/%s.png&w=96&h=96", key), true
 	}
 	return "", false
 }

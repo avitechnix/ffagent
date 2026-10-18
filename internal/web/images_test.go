@@ -16,7 +16,7 @@ func TestImageProxy(t *testing.T) {
 		hits.Add(1)
 		img := r.URL.Query().Get("img")
 		switch {
-		case img == "/i/headshots/nfl/players/full/4241389.png", img == "/i/teamlogos/nfl/500/jax.png":
+		case img == "/i/headshots/nfl/players/full/4241389.png":
 			w.Header().Set("Content-Type", "image/png")
 			io.WriteString(w, "\x89PNG fake")
 		case img == "/i/headshots/nfl/players/full/77.png":
@@ -49,18 +49,15 @@ func TestImageProxy(t *testing.T) {
 	if hits.Load() != 1 {
 		t.Errorf("second request wasn't cached: %d CDN hits", hits.Load())
 	}
-	if w := get("/img/t/JAX.png"); w.Code != 200 {
-		t.Errorf("team logo: %d", w.Code)
-	}
 	if w := get("/img/p/999.png"); w.Code != 404 {
 		t.Errorf("missing headshot: %d", w.Code)
 	}
 	if w := get("/img/p/77.png"); w.Code != 502 {
 		t.Errorf("non-image served: %d", w.Code)
 	}
-	// Only player IDs and team abbreviations: nothing else reaches the CDN.
+	// Only player IDs: nothing else reaches the CDN, NFL team logos included.
 	before := hits.Load()
-	for _, p := range []string{"/img/p/-16030.png", "/img/p/..%2fetc.png", "/img/t/j%26x.png", "/img/x/1.png", "/img/t/toolong.png"} {
+	for _, p := range []string{"/img/p/-16030.png", "/img/p/..%2fetc.png", "/img/t/jax.png", "/img/x/1.png", "/img/t/toolong.png"} {
 		if w := get(p); w.Code != 404 {
 			t.Errorf("%s: %d, want 404", p, w.Code)
 		}
