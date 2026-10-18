@@ -54,7 +54,8 @@ func (w *Watcher) propose(ctx context.Context, p *Plan, now time.Time) error {
 	}
 
 	var items []*approval.Item
-	index := map[int]int{} // plan action index -> item index
+	var auto *approval.Item // approved without waiting (auto_approve_ruled_out)
+	index := map[int]int{}  // plan action index -> item index
 	for i, act := range p.Actions {
 		sig := act.Signature()
 		if waiting[sig] || st.RecentlyDeclined(sig, now, cooldown) || anyBusy(busy, act.Players()) {
@@ -93,11 +94,19 @@ func (w *Watcher) propose(ctx context.Context, p *Plan, now time.Time) error {
 			for j := range items {
 				deps = append(deps, j) // the lineup assumes the roster moves happen
 			}
-			items = append(items, &approval.Item{
+			it := &approval.Item{
 				Kind: string(ActLineup), Summary: "Set lineup: " + act.Reason, Reason: lineupWhy(p),
 				Txn: act.Txn, Signature: sig, Players: act.Players(), Depends: deps,
 				Expires: earliest(now.Add(ttl), firstKickoff(p.League, p.Moves, now)),
-			})
+			}
+			// Only a lineup on the roster as it is now: none of it may hinge on
+			// a roster move, proposed now or still waiting from earlier.
+			if ok, out := w.Agent.autoApprovable(p.Moves); ok && cfg.AutoApproveRuledOut && len(p.Actions) == 0 {
+				auto = it
+				it.Reason += fmt.Sprintf(". Approved automatically because %s %s ruled out and you turned on auto_approve_ruled_out; it runs within a minute", strings.Join(out, " and "), isAre(len(out)))
+				fmt.Fprintf(w.Out, "%s  AUTO    approved lineup change: %s ruled out\n", stamp(now), strings.Join(out, ", "))
+			}
+			items = append(items, it)
 		}
 	}
 	if len(items) == 0 {
@@ -106,6 +115,9 @@ func (w *Watcher) propose(ctx context.Context, p *Plan, now time.Time) error {
 	}
 
 	b := st.AddBatch("moves", items, now)
+	if auto != nil {
+		auto.Status, auto.Decided, auto.Via = approval.Approved, now, "auto"
+	}
 	subject, body := proposalEmail(p, b, items, cfg.Email.Location())
 	if err := w.send(ctx, b, subject, body, ""); err != nil {
 		// You never saw these, so don't let them block re-proposing.
@@ -115,7 +127,21 @@ func (w *Watcher) propose(ctx context.Context, p *Plan, now time.Time) error {
 		return fmt.Errorf("emailing proposal: %w", err)
 	}
 	fmt.Fprintf(w.Out, "%s  EMAIL   sent %d move(s) for approval (#%s)\n", stamp(now), len(items), b.Token)
+	w.notifyProposal(items)
+	for _, it := range items {
+		if it.Status == approval.Approved {
+			w.poke() // run it on the next loop, not in a minute
+			break
+		}
+	}
 	return nil
+}
+
+func isAre(n int) string {
+	if n == 1 {
+		return "is"
+	}
+	return "are"
 }
 
 // send emails a message for a batch and remembers its Message-ID so the
@@ -206,6 +232,7 @@ func (w *Watcher) TickApprovals(ctx context.Context) error {
 	}
 	if len(ran) > 0 {
 		w.lastFull = time.Time{} // the roster changed: re-plan on the next tick
+		w.notifyResults(ran)
 	}
 	for token, items := range decided {
 		b := st.Batch(token)

@@ -67,6 +67,10 @@ type Watcher struct {
 	// Asker answers follow-up questions about proposed moves (nil = off).
 	Asker ask.Answerer
 
+	// Notifier pushes notifications to the phone app (nil = off).
+	Notifier Notifier
+	pushes   sync.WaitGroup // notifications in flight
+
 	state     WatchState
 	approvals *approval.Store
 	loaded    bool
@@ -138,7 +142,7 @@ func (w *Watcher) Run(ctx context.Context, every time.Duration) error {
 		if w.Apply && w.emailApprovals() {
 			report(w.TickApprovals(ctx))
 		}
-		if w.lastNews.IsZero() || w.Agent.Now().Sub(w.lastNews) >= every || w.lastFull.IsZero() {
+		if now := w.Agent.Now(); w.lastNews.IsZero() || now.Sub(w.lastNews) >= w.newsInterval(every, now) || w.lastFull.IsZero() {
 			w.lastNews = w.Agent.Now()
 			report(w.Tick(ctx))
 		}
