@@ -27,9 +27,27 @@ func runSecrets(sub string, args []string, path string) error {
 	case "check":
 		return secretsCheck(path)
 	case "passwd":
+		if os.Getenv("FFAGENT_KEYCHAIN") != "" {
+			return errors.New("the vault passphrase is a random one kept in your Keychain; there's nothing to change")
+		}
 		return secretsPasswd(path)
+	case "keychain-init":
+		svc := os.Getenv("FFAGENT_KEYCHAIN")
+		if svc == "" {
+			svc = "ffagent"
+		}
+		created, err := secrets.KeychainInit(svc)
+		if err != nil {
+			return err
+		}
+		if created {
+			fmt.Fprintln(os.Stderr, "Stored a new random vault passphrase in your Keychain (it's never shown).")
+		} else {
+			fmt.Fprintln(os.Stderr, "The Keychain already has the vault passphrase.")
+		}
+		return nil
 	}
-	return fmt.Errorf("unknown secrets command %q (want set, check or passwd)", sub)
+	return fmt.Errorf("unknown secrets command %q (want set, check, passwd or keychain-init)", sub)
 }
 
 // openOrCreate returns the vault passphrase and current values, creating a
