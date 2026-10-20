@@ -80,7 +80,7 @@ Everything is a **dry run by default**. Nothing changes on ESPN unless you pass
 
 ## Server install (recommended)
 
-On any Linux server with systemd 250+, for example a small VPS or a Raspberry Pi. That
+(On a Mac, see [Mac install](#mac-install-mac-mini-or-any-mac).) On any Linux server with systemd 250+, for example a small VPS or a Raspberry Pi. That
 means Ubuntu 24.04+, Debian 12+ or Fedora 36+. Ubuntu 22.04 won't work: it ships
 systemd 249.
 
@@ -140,6 +140,49 @@ reminder while they last and an all-clear when they're fixed. It looks for:
 - missing past weekly projections (track records built from too few games);
 - this week's projections drifting from ESPN's with no injury news to explain it;
 - live game clocks being unavailable.
+
+## Mac install (Mac mini or any Mac)
+
+ffagent runs on macOS 13 or later as a background service in your own account. It
+doesn't need sudo.
+
+```sh
+git clone https://github.com/avitechnix/ffagent
+cd ffagent
+./deploy/macos/install.sh
+```
+
+It asks the same questions as the Linux installer (league, ESPN cookies, the agent's
+Gmail) and differs in four ways:
+
+- **The vault passphrase lives in your login Keychain.** It's random, created by
+  `ffagent secrets keychain-init`, handed to Apple's `security` tool on its input
+  (never on a command line) and never shown.
+- **The watcher is a launchd service** in `~/Library/LaunchAgents`. It starts when you
+  log in, restarts if it fails, and logs to `~/Library/Logs/ffagent/watch.log`.
+- **Files live in `~/Library/Application Support/ffagent`** (mode 700): config,
+  encrypted vault and state. The installer uses Go from your PATH (e.g. Homebrew), or
+  downloads a checksum-verified copy into that folder.
+- **`ffagentctl` runs without sudo**: `ffagentctl logs -f`, `ffagentctl matchup`,
+  `ffagentctl mode apply`, `ffagentctl update`, `ffagentctl auto-update on`.
+
+The phone app and Claude questions work the same way:
+`./deploy/macos/setup-phone.sh` (needs the Tailscale app on the Mac) and
+`./deploy/macos/setup-ask.sh`. To remove everything, including the Keychain item:
+`./deploy/macos/uninstall.sh`.
+
+**Keeping it running on a Mac mini:**
+
+- **Stay awake:** `sudo pmset -a sleep 0 autorestart 1` keeps the Mac awake and
+  restarts it after a power cut. The installer reminds you if the Mac is set to sleep.
+- **Stay logged in:** the service runs while you're logged in, because that's when your
+  Keychain is unlocked. With FileVault on (recommended), someone has to log in after a
+  restart; Screen Sharing works for that.
+- **Installing over SSH:** unlock the Keychain first:
+  `security unlock-keychain ~/Library/Keychains/login.keychain-db`.
+- **Moving from a Linux server:** install fresh on the Mac (you'll paste the ESPN
+  cookies again), then stop the old one with `sudo ./deploy/uninstall.sh` there, so
+  two agents don't watch the same league.
 
 ## iPhone app
 

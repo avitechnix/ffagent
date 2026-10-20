@@ -50,11 +50,13 @@ Commands:
   email-test     Send a test email and check the agent can read replies
   backtest       Check whether Vegas lines or defense-vs-position would have
                  made ESPN's projections more accurate this season
+  config set KEY VALUE  Change one setting in $FFAGENT_CONFIG (e.g. web.enabled true)
   secrets set    Store your ESPN cookies in the encrypted vault (hidden input)
   secrets set email   Store the email account's app password
   secrets set anthropic  Store an Anthropic API key (for follow-up questions)
   secrets check  Verify the vault decrypts (never prints the values)
   secrets passwd Change the vault passphrase
+  secrets keychain-init  macOS: store a random vault passphrase in your Keychain
 
 Flags:
   --config FILE  JSON config (default $FFAGENT_CONFIG; see config.example.json);
@@ -78,6 +80,16 @@ func main() {
 	}
 	cmd := os.Args[1]
 	args := os.Args[2:]
+	if cmd == "config" {
+		if len(args) != 3 || args[0] != "set" {
+			fmt.Fprintln(os.Stderr, "usage: ffagent config set <key> <value>   (uses $FFAGENT_CONFIG)")
+			os.Exit(2)
+		}
+		if err := configSet(os.Getenv("FFAGENT_CONFIG"), args[1], args[2]); err != nil {
+			fatal(err)
+		}
+		return
+	}
 	if cmd == "secrets" {
 		if len(args) == 0 {
 			fmt.Fprint(os.Stderr, usage)

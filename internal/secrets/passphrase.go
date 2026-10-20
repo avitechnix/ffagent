@@ -22,6 +22,10 @@ func Unattended() (pass []byte, ok bool, err error) {
 			return p, err == nil, err
 		}
 	}
+	if svc := os.Getenv("FFAGENT_KEYCHAIN"); svc != "" {
+		p, err := Passphrase()
+		return p, err == nil, err
+	}
 	if os.Getenv("FFAGENT_PASSPHRASE_FILE") != "" {
 		p, err := Passphrase()
 		return p, err == nil, err
@@ -37,11 +41,13 @@ func Unattended() (pass []byte, ok bool, err error) {
 //
 //  1. $CREDENTIALS_DIRECTORY/ffagent-passphrase — a systemd encrypted
 //     credential (LoadCredentialEncrypted=), decrypted only for the service.
-//  2. $FFAGENT_PASSPHRASE_FILE — a file that must be private (mode 600).
-//  3. $FFAGENT_PASSPHRASE — for CI secret stores (e.g. GitHub Actions
+//  2. $FFAGENT_KEYCHAIN — on macOS, the login Keychain item with that
+//     service name (see KeychainInit).
+//  3. $FFAGENT_PASSPHRASE_FILE — a file that must be private (mode 600).
+//  4. $FFAGENT_PASSPHRASE — for CI secret stores (e.g. GitHub Actions
 //     secrets). It is removed from the environment as soon as it's read so
 //     child processes never inherit it.
-//  4. An interactive prompt with echo off.
+//  5. An interactive prompt with echo off.
 //
 // The caller should wipe the returned slice when done.
 func Passphrase() ([]byte, error) {
@@ -50,6 +56,9 @@ func Passphrase() ([]byte, error) {
 		if _, err := os.Stat(p); err == nil {
 			return readPassFile(p, false)
 		}
+	}
+	if svc := os.Getenv("FFAGENT_KEYCHAIN"); svc != "" {
+		return keychainRead(svc)
 	}
 	if p := os.Getenv("FFAGENT_PASSPHRASE_FILE"); p != "" {
 		return readPassFile(p, true)
@@ -86,7 +95,7 @@ func readPassFile(path string, requirePrivate bool) ([]byte, error) {
 func Prompt(label string) ([]byte, error) {
 	fd := int(os.Stdin.Fd())
 	if !term.IsTerminal(fd) {
-		return nil, errors.New("secrets: no terminal to prompt on; provide the passphrase via a systemd credential, FFAGENT_PASSPHRASE_FILE, or a CI secret in FFAGENT_PASSPHRASE")
+		return nil, errors.New("secrets: no terminal to prompt on; provide the passphrase via a systemd credential, the macOS Keychain (FFAGENT_KEYCHAIN), FFAGENT_PASSPHRASE_FILE, or a CI secret in FFAGENT_PASSPHRASE")
 	}
 	fmt.Fprint(os.Stderr, label)
 	b, err := term.ReadPassword(fd)

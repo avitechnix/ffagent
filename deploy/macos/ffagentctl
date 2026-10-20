@@ -1,0 +1,161 @@
+#!/usr/bin/env bash
+# ffagentctl (macOS) — run ffagent with the installed service's settings and
+# manage the background watcher. No sudo: everything runs as you.
+#
+#   ffagentctl analyze | matchup | lineup | waivers | trades | free-agents --pos RB
+#   ffagentctl secrets set           # refresh ESPN cookies (hidden input)
+#   ffagentctl secrets set email     # replace the Gmail app password
+#   ffagentctl secrets set anthropic # Anthropic API key for questions
+#   ffagentctl secrets check
+#   ffagentctl email-test            # send a test email, check reply reading
+#   ffagentctl mode apply            # watcher emails moves for your approval
+#   ffagentctl mode dry-run          # watcher only logs what it would propose
+#   ffagentctl status | logs [-f] | restart | stop | start
+#   ffagentctl update                # pull the latest code and reinstall
+#   ffagentctl auto-update on|off    # weekly update (Tuesdays)
+#
+# The vault passphrase is a random one kept in your login Keychain; the
+# watcher and these commands read it from there, so it's never shown.
+set -euo pipefail
+
+APP="$HOME/Library/Application Support/ffagent"
+BIN="$APP/bin/ffagent"
+LOGS="$HOME/Library/Logs/ffagent"
+LABEL=com.github.avitechnix.ffagent.watch
+UPLABEL=com.github.avitechnix.ffagent.update
+AGENTS="$HOME/Library/LaunchAgents"
+PLIST="$AGENTS/$LABEL.plist"
+UPPLIST="$AGENTS/$UPLABEL.plist"
+DOMAIN="gui/$(id -u)"
+
+export FFAGENT_CONFIG="$APP/config.json"
+export FFAGENT_VAULT="$APP/secrets.vault"
+export FFAGENT_KEYCHAIN=ffagent
+
+die() { echo "ffagentctl: $*" >&2; exit 1; }
+[[ $EUID -ne 0 ]] || die "run as yourself, not with sudo"
+[[ -x $BIN ]] || die "ffagent isn't installed; run ./deploy/macos/install.sh from your checkout"
+
+running() { launchctl print "$DOMAIN/$LABEL" 2>/dev/null | grep -q 'state = running'; }
+
+# Keep the log from growing without bound: launchd appends forever.
+rotate_logs() {
+  local f="$LOGS/watch.log"
+  if [[ -f $f ]] && (( $(stat -f %z "$f") > 10485760 )); then
+    mv -f "$f" "$f.1"
+  fi
+}
+
+# write_plist MODE writes the watcher's launchd job.
+write_plist() {
+  local apply=""
+  [[ $1 == apply ]] && apply="<string>--apply</string>"
+  mkdir -p "$AGENTS" "$LOGS"
+  cat > "$PLIST" <<PL
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>$LABEL</string>
+  <key>ProgramArguments</key>
+  <array><string>$BIN</string><string>watch</string>$apply</array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>FFAGENT_CONFIG</key><string>$FFAGENT_CONFIG</string>
+    <key>FFAGENT_VAULT</key><string>$FFAGENT_VAULT</string>
+    <key>FFAGENT_KEYCHAIN</key><string>ffagent</string>
+  </dict>
+  <key>WorkingDirectory</key><string>$APP</string>
+  <key>Umask</key><integer>63</integer>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><dict><key>SuccessfulExit</key><false/></dict>
+  <key>ThrottleInterval</key><integer>120</integer>
+  <key>ProcessType</key><string>Background</string>
+  <key>SoftResourceLimits</key><dict><key>Core</key><integer>0</integer></dict>
+  <key>HardResourceLimits</key><dict><key>Core</key><integer>0</integer></dict>
+  <key>StandardOutPath</key><string>$LOGS/watch.log</string>
+  <key>StandardErrorPath</key><string>$LOGS/watch.log</string>
+</dict>
+</plist>
+PL
+  plutil -lint -s "$PLIST" || die "the generated launchd job is invalid"
+  printf '%s\n' "$1" > "$APP/mode"
+}
+
+# reload (re)starts the watcher from its plist.
+reload() {
+  rotate_logs
+  launchctl bootout "$DOMAIN/$LABEL" 2>/dev/null || true
+  launchctl bootstrap "$DOMAIN" "$PLIST"
+  sleep 3
+  running || { tail -n 30 "$LOGS/watch.log" 2>/dev/null; die "the watcher didn't start; see the log above"; }
+}
+
+current_mode() { cat "$APP/mode" 2>/dev/null || echo dry-run; }
+
+[[ $# -gt 0 ]] || { sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
+
+case "$1" in
+  mode)
+    case "${2:-}" in
+      apply|dry-run) write_plist "$2"; reload; echo "watcher restarted in $2 mode" ;;
+      *) die "usage: ffagentctl mode apply|dry-run" ;;
+    esac
+    exit 0 ;;
+  restart|start) write_plist "$(current_mode)"; reload; echo "watcher running in $(current_mode) mode"; exit 0 ;;
+  stop) launchctl bootout "$DOMAIN/$LABEL" 2>/dev/null && echo "watcher stopped (it starts again at login; 'ffagentctl start' to start it now)" || echo "watcher wasn't running"; exit 0 ;;
+  status)
+    if running; then echo "watcher running in $(current_mode) mode"; else echo "watcher not running"; fi
+    launchctl print "$DOMAIN/$LABEL" 2>/dev/null | grep -E '^\s*(state|pid|last exit code) =' || true
+    exit 0 ;;
+  logs)
+    shift
+    [[ ${1:-} == -f ]] && exec tail -n 50 -F "$LOGS/watch.log"
+    exec tail -n 200 "$LOGS/watch.log" ;;
+  update)
+    SRC=$(cat "$APP/source" 2>/dev/null || true)
+    [[ -n $SRC && -d $SRC/.git ]] || die "don't know where the source is; cd into your ffagent checkout and run: ./deploy/macos/install.sh"
+    before=$(git -C "$SRC" rev-parse HEAD)
+    git -C "$SRC" pull --ff-only --quiet || die "git pull failed (local changes in $SRC?); nothing was changed"
+    after=$(git -C "$SRC" rev-parse HEAD)
+    if [[ $before == "$after" ]]; then
+      echo "ffagent is up to date ($(git -C "$SRC" log -1 --format=%h))"
+      exit 0
+    fi
+    echo "Updating ffagent:"
+    git -C "$SRC" log --format='  %h %s' "$before..$after" | head -20
+    MODE=$(current_mode) FFAGENT_UPDATE=1 exec "$SRC/deploy/macos/install.sh" </dev/null ;;
+  auto-update)
+    case "${2:-}" in
+      on)
+        cat > "$UPPLIST" <<PL
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>$UPLABEL</string>
+  <key>ProgramArguments</key><array><string>$APP/bin/ffagentctl</string><string>update</string></array>
+  <key>StartCalendarInterval</key><dict><key>Weekday</key><integer>2</integer><key>Hour</key><integer>9</integer><key>Minute</key><integer>17</integer></dict>
+  <key>StandardOutPath</key><string>$LOGS/update.log</string>
+  <key>StandardErrorPath</key><string>$LOGS/update.log</string>
+</dict>
+</plist>
+PL
+        plutil -lint -s "$UPPLIST" || die "the generated launchd job is invalid"
+        launchctl bootout "$DOMAIN/$UPLABEL" 2>/dev/null || true
+        launchctl bootstrap "$DOMAIN" "$UPPLIST"
+        echo "weekly updates on (Tuesdays around 9:17; log: $LOGS/update.log)" ;;
+      off)
+        launchctl bootout "$DOMAIN/$UPLABEL" 2>/dev/null || true
+        rm -f "$UPPLIST"
+        echo "weekly updates off" ;;
+      *) die "usage: ffagentctl auto-update on|off" ;;
+    esac
+    exit 0 ;;
+esac
+
+for a in "$@"; do
+  [[ "$a" == "--apply" ]] && running &&
+    die "the watcher is running and holds the change lock; use 'ffagentctl mode apply', or stop it first (ffagentctl stop)"
+done
+exec "$BIN" "$@"
