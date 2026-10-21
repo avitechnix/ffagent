@@ -82,11 +82,25 @@ PL
   printf '%s\n' "$1" > "$APP/mode"
 }
 
-# reload (re)starts the watcher from its plist.
+loaded() { launchctl print "$DOMAIN/$LABEL" >/dev/null 2>&1; }
+
+# reload (re)starts the watcher from its plist. bootout returns before the
+# old job is gone, and bootstrapping over it fails with "5: Input/output
+# error", so wait for it to unload and retry; if it never unloads, restart
+# the loaded job in place.
 reload() {
   rotate_logs
   launchctl bootout "$DOMAIN/$LABEL" 2>/dev/null || true
-  launchctl bootstrap "$DOMAIN" "$PLIST"
+  for _ in $(seq 20); do loaded || break; sleep 0.5; done
+  local ok=""
+  for _ in 1 2 3; do
+    if launchctl bootstrap "$DOMAIN" "$PLIST" 2>/dev/null; then ok=1; break; fi
+    sleep 2
+  done
+  if [[ -z $ok ]]; then
+    loaded || die "launchd wouldn't load the watcher. Over SSH, run this in Terminal on the Mac itself (launchd only takes background jobs for a logged-in user)."
+    launchctl kickstart -k "$DOMAIN/$LABEL" || die "couldn't restart the watcher"
+  fi
   sleep 3
   running || { tail -n 30 "$LOGS/watch.log" 2>/dev/null; die "the watcher didn't start; see the log above"; }
 }
