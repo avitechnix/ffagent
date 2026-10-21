@@ -43,6 +43,9 @@ func (s *state) planPickups(t *espn.Team) []Action {
 				stash = true // only if this week's lineup doesn't change
 			}
 			r := s.withMove(t.Roster, c, d)
+			if d != nil && d.Position != c.Position && !s.regularStarter(r, c) {
+				return // a different position only for someone who'd start
+			}
 			if stash && s.weekTotal(r) < thisWeek-0.05 {
 				return // the drop is in this week's lineup
 			}
@@ -86,6 +89,17 @@ func (s *state) planPickups(t *espn.Team) []Action {
 		t.Roster = best.roster
 	}
 	return acts
+}
+
+// regularStarter reports whether p is in the roster's best lineup in a
+// typical week (no byes), not just as cover for a bye or an injury. A
+// pickup may replace a player at another position only then: otherwise the
+// gain is depth on paper, like a third tight end for a running back.
+func (s *state) regularStarter(roster []*espn.Player, p *espn.Player) bool {
+	future, _ := s.futureRoster(roster)
+	weeks := float64(max(1, len(s.l.RemainingWeeks())))
+	a := lineup.Optimize(s.l, future, func(q *espn.Player) float64 { return s.val(q).ROSValue / weeks })
+	return espn.IsStartingSlot(a.Slots[p.ID])
 }
 
 // stashGainFactor: a stash (a pickup that projects less this week than his
@@ -194,7 +208,10 @@ func (s *state) pickupAction(t *espn.Team, c, d *espn.Player, gain float64, faab
 		why = append(why, fmt.Sprintf("a stash for later: %s isn't in your best lineup this week, so this week's projection doesn't change, and %s is worth more over the rest of the season", d.Name, c.Name))
 	}
 	if len(v.Notes) > 0 {
-		why = append(why, strings.Join(v.Notes, ", "))
+		why = append(why, c.Name+": "+strings.Join(v.Notes, ", "))
+	}
+	if d != nil && d.Position != c.Position {
+		why = append(why, fmt.Sprintf("a %s for a %s, because %s would be in your starting lineup most weeks", c.Position, d.Position, c.Name))
 	}
 	if cover != "" {
 		why = append(why, cover)

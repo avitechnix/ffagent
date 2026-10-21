@@ -308,7 +308,7 @@ func Value(l *espn.League, p *espn.Player, o Options) *Valuation {
 	v.rosFactor = ros
 	v.ROSValue = v.PerGame * float64(v.RemainingGames) * ros
 
-	v.addNotes(o)
+	v.addNotes(o, week)
 	return v
 }
 
@@ -339,10 +339,10 @@ func stdDev(v *Valuation, pos string) float64 {
 	return math.Sqrt((n*sample*sample + k*prior*prior) / (n + k))
 }
 
-func (v *Valuation) addNotes(o Options) {
+func (v *Valuation) addNotes(o Options, week int) {
 	p := v.Player
 	if v.OnBye {
-		v.Notes = append(v.Notes, "on bye")
+		v.Notes = append(v.Notes, fmt.Sprintf("on bye this week (%s, week %d)", p.ProTeam, week))
 	}
 	if st := p.EffectiveInjury(); st != espn.InjuryActive {
 		v.Notes = append(v.Notes, st)
