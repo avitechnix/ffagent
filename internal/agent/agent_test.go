@@ -357,7 +357,8 @@ func TestPickupProjectsLowerOnlyAsAStash(t *testing.T) {
 	if act == nil {
 		t.Fatal("no stash of a 16-point WR on bye for a bench player")
 	}
-	if !strings.HasPrefix(act.Summary, "Stash Bye Stash WR") || !strings.Contains(act.Reason, "this week's projection doesn't change") {
+	if !strings.HasPrefix(act.Summary, "Stash Bye Stash WR") || !strings.Contains(act.Reason, "this week's projection doesn't change") ||
+		!strings.Contains(act.Reason, "Bye Stash WR: on bye this week (NFL, week 6)") {
 		t.Errorf("stash isn't labeled and explained: %s — %s", act.Summary, act.Reason)
 	}
 	for _, x := range act.Txn.Items {
@@ -468,5 +469,57 @@ func TestPickupAfterHisGameWasPlayed(t *testing.T) {
 	c.Locked, c.Status = true, pendingClaim
 	if s.projectsLower(&c, drop) {
 		t.Error("a waiver claim leaves this week unchanged (the drop stays until it clears)")
+	}
+}
+
+// A pickup replaces a player at another position only when he'd be a
+// regular starter; a bench tight end isn't worth a running back.
+func TestPickupKeepsPositionsUnlessHeStarts(t *testing.T) {
+	plan := func(teamPPG float64, protect ...string) (*Plan, *Action) {
+		f, _ := scenario()
+		te := freeAgent(mk("Waiver TE", "TE", espn.SlotBench, teamPPG), espn.StatusWaivers)
+		f.pool = []*espn.Player{te}
+		a := testAgent(f)
+		a.Cfg.ProtectedPlayers = protect
+		a.Cfg.IREligibleStatuses = []string{} // no IR move, so no open roster spot: every pickup drops someone
+		p, err := a.Plan(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		for i, act := range p.Actions {
+			if strings.Contains(act.Summary, "Waiver TE") {
+				return p, &p.Actions[i]
+			}
+		}
+		return p, nil
+	}
+	dropped := func(p *Plan, act *Action) *espn.Player {
+		for _, x := range act.Txn.Items {
+			if x.Type == espn.ItemDrop {
+				return findByID(p.Me.Roster, x.PlayerID)
+			}
+		}
+		return nil
+	}
+
+	// A 7-point TE behind an 8-point starter: worth adding only over the
+	// 3-point backup TE, never over a running back.
+	if p, act := plan(7); act != nil {
+		if d := dropped(p, act); d == nil || d.Position != "TE" {
+			t.Errorf("a backup TE cost a %v: %s", d, act.Summary)
+		}
+	}
+	// With the backup TE protected, the only drops are other positions,
+	// so a bench TE isn't added at all...
+	if _, act := plan(7, "TE Bench"); act != nil {
+		t.Errorf("added a non-starting TE for another position: %s", act.Summary)
+	}
+	// ...but one who'd start over the 8-point TE is, and the reason says why.
+	p, act := plan(16, "TE Bench")
+	if act == nil {
+		t.Fatal("didn't add a TE who'd start")
+	}
+	if d := dropped(p, act); d == nil || d.Position == "TE" || !strings.Contains(act.Reason, "in your starting lineup most weeks") {
+		t.Errorf("starter TE pickup: %s — %s", act.Summary, act.Reason)
 	}
 }
