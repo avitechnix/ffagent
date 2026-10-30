@@ -5,7 +5,7 @@ go 1.26.9
 toolchain go1.27.2
 
 require (
-	github.com/anthropics/anthropic-sdk-go v1.82.0
+	github.com/anthropics/anthropic-sdk-go v1.84.0
 	golang.org/x/crypto v0.58.0
 	golang.org/x/term v0.47.0
 )
