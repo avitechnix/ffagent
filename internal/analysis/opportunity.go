@@ -25,6 +25,12 @@ type Injury struct {
 // the next player up at the same position can be expected to score.
 var opportunityShare = map[string]float64{"QB": 0.75, "RB": 0.55, "TE": 0.45, "WR": 0.3}
 
+// OpportunityShare is opportunityShare for a position, and whether it has one.
+func OpportunityShare(pos string) (float64, bool) {
+	s, ok := opportunityShare[pos]
+	return s, ok
+}
+
 // gamesMissed is a conservative estimate of games lost for a designation.
 func gamesMissed(status string) float64 {
 	switch status {

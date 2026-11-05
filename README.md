@@ -47,7 +47,15 @@ A Go agent that manages your ESPN fantasy football team. Each run it:
 4. **Sets the lineup to maximize your chance of beating this week's opponent.** It
    solves the lineup exactly (an assignment solver, so FLEX and superflex slots are
    handled correctly). Injured and bye-week players are benched. Players whose games
-   have started stay where they are. It also projects your opponent's best possible
+   have started stay where they are.
+   - **Questionable players.** ESPN's projection for a questionable player is roughly
+     what he scores if he plays, so when choosing who starts, the agent counts him at
+     85% of it for his chance of sitting. His backup at the same position gets the
+     other side: if the starter sits, the backup takes over the role, worth his
+     recent average if the starter has missed the last two weeks, or the usual
+     next-man-up share otherwise. Projections shown stay ESPN's, and the injury
+     report's latest comment (practice participation, the coach's word) shows with
+     the player's status. It also projects your opponent's best possible
    lineup and computes your win probability. Then it tries lineups that lean toward
    upside or toward safety, and keeps the one with the highest win probability. When
    you're the underdog it starts boom/bust players; when you're the favorite it

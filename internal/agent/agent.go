@@ -145,6 +145,7 @@ type state struct {
 	warnings       []string
 	future         []futureWeek       // weeks after this one (see futureWeeks)
 	weekly         map[[2]int]float64 // {player, week} -> FutureWeek
+	decision       map[int]float64    // this week's lineup score where it differs from the projection (see applyQuestionable)
 }
 
 func (s *state) warn(msg string) { s.warnings = append(s.warnings, msg) }
@@ -219,6 +220,7 @@ func (a *Agent) newState(l *espn.League, me *espn.Team) *state {
 		}
 	}
 	s.applyOpportunity()
+	s.applyQuestionable()
 	return s
 }
 
@@ -237,6 +239,7 @@ func (s *state) setPool(pool []*espn.Player) {
 		}
 	}
 	s.applyOpportunity()
+	s.applyQuestionable()
 }
 
 func (s *state) applyOpportunity() {
@@ -257,7 +260,7 @@ func (s *state) applyOpportunity() {
 // players designated to return are left to ESPN Fantasy's status.
 func (a *Agent) applyNews(p *espn.Player) {
 	if inj, ok := a.Injuries[p.ID]; ok && inj.Status != "" && !inj.Returning {
-		p.NewsStatus = inj.Status
+		p.NewsStatus, p.NewsComment = inj.Status, inj.Note
 	}
 }
 
@@ -377,9 +380,9 @@ const maxRiskShift = 0.15
 // lambda standard deviations (lambda > 0 favors boom/bust upside).
 func (s *state) weekScorer(lambda float64) lineup.Scorer {
 	return func(p *espn.Player) float64 {
-		v := s.val(p)
-		limit := maxRiskShift * v.WeekProjection
-		return v.WeekProjection + math.Max(-limit, math.Min(limit, lambda*v.WeekStdDev))
+		v, pts := s.val(p), s.decisionPoints(p)
+		limit := maxRiskShift * pts
+		return pts + math.Max(-limit, math.Min(limit, lambda*v.WeekStdDev))
 	}
 }
 
