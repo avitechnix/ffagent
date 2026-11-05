@@ -36,6 +36,11 @@ type Valuation struct {
 	OnBye              bool
 	InjuryFactor       float64
 	OpportunityBoost   float64 // points per week added because a teammate is out
+	// PlayChance is the chance he plays this week that ESPN's projection
+	// doesn't already price in: under 1 for a questionable or doubtful
+	// player whose projection assumes he plays. Lineup decisions use it;
+	// projections shown stay ESPN's.
+	PlayChance float64
 
 	// Rest of season.
 	PerGame        float64 // expected points per game going forward
@@ -281,6 +286,14 @@ func Value(l *espn.League, p *espn.Player, o Options) *Valuation {
 		v.WeekProjection = base * v.AccuracyFactor * weekInjuryAdjustment(p, hasProj)
 	}
 	v.WeekStdDev = stdDev(v, p.Position)
+	// ESPN's projection for a questionable player is roughly what he scores
+	// if he plays. When the news agrees with ESPN's designation (so the
+	// projection wasn't already discounted), keep the chance he sits for the
+	// lineup decision; the projection itself stays ESPN's.
+	v.PlayChance = 1
+	if f := WeekInjuryFactor(p.EffectiveInjury()); !p.Locked && !v.OnBye && hasProj && f > 0 && f < 1 && weekInjuryAdjustment(p, hasProj) == 1 {
+		v.PlayChance = f
+	}
 	if p.Locked {
 		// Game underway or over: points so far plus the pre-game projection
 		// for the part of the game still to play, the way ESPN's app
@@ -345,6 +358,9 @@ func (v *Valuation) addNotes(o Options, week int) {
 		v.Notes = append(v.Notes, fmt.Sprintf("on bye this week (%s, week %d)", p.ProTeam, week))
 	}
 	if st := p.EffectiveInjury(); st != espn.InjuryActive {
+		if p.NewsComment != "" && p.NewsStatus == st {
+			st += ": " + p.NewsComment // the injury report's latest word, e.g. practice participation
+		}
 		v.Notes = append(v.Notes, st)
 	}
 	if v.ProjectedWeeks >= 3 {

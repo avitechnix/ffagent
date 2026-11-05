@@ -27,6 +27,7 @@ type Player struct {
 	EligibleSlots []int
 	InjuryStatus  string // ESPN Fantasy's designation; governs IR eligibility
 	NewsStatus    string // fresher designation from the injury report, if any
+	NewsComment   string // the injury report's latest comment, with NewsStatus
 	Injured       bool
 	PercentOwned  float64
 	PercentChange float64
