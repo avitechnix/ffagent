@@ -29,6 +29,11 @@ A Go agent that manages your ESPN fantasy football team. Each run it:
      replaces is proposed only as a "Stash": the dropped player isn't in this week's
      best lineup, so this week's projection can't fall, and the stash must be worth at
      least twice `min_pickup_gain` over the season (`plan_stashes`, on by default).
+   - **Waiver timing.** A claim usually clears before the weekend's games, so when
+     valuing one the agent counts the player it drops as gone this week, and the
+     player it claims as unavailable until next week. So dropping one of this week's
+     starters counts against a claim, and a claim for a player on bye never drops
+     one (say, a defense on bye for the defense you start).
 
    Free agents are added right away. Waiver players get a claim with a FAAB bid:
    - **What he's worth to you** is sized to the upgrade, up to `max_faab_fraction` of

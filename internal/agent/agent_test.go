@@ -523,3 +523,50 @@ func TestPickupKeepsPositionsUnlessHeStarts(t *testing.T) {
 		t.Errorf("starter TE pickup: %s — %s", act.Summary, act.Reason)
 	}
 }
+
+// A waiver claim clears before the weekend's games, so claiming a defense
+// on bye this week for the defense you start leaves you with none.
+func TestClaimOnByeDoesNotDropThisWeeksStarter(t *testing.T) {
+	plan := func(protectBench bool) (*Plan, *Action) {
+		f, _ := scenario()
+		bye := freeAgent(mk("Bye Week DST", "D/ST", espn.SlotBench, 9), espn.StatusWaivers)
+		f.pool = []*espn.Player{bye}
+		base := f.league
+		f.league = func() *espn.League {
+			l := base()
+			l.ByeWeeks[bye.ProTeamID] = week
+			return l
+		}
+		a := testAgent(f)
+		a.Cfg.IREligibleStatuses = []string{} // no open roster spot
+		// Leave the starting defense as the only player it could replace,
+		// unless the bench defense is offered too.
+		a.Cfg.ProtectedPlayers = []string{"My QB", "Hurt Starter", "RB Two", "RB Bench", "WR One", "WR Two", "WR Flex", "WR Bench",
+			"My TE", "TE Bench", "QB Bench", "Bad Kicker", "WR Scrub", "RB Scrub"}
+		if protectBench {
+			a.Cfg.ProtectedPlayers = append(a.Cfg.ProtectedPlayers, "DST Bench")
+		}
+		p, err := a.Plan(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		for i, act := range p.Actions {
+			if strings.Contains(act.Summary, "Bye Week DST") {
+				return p, &p.Actions[i]
+			}
+		}
+		return p, nil
+	}
+	if _, act := plan(true); act != nil {
+		t.Errorf("claimed a defense on bye for this week's starting defense: %s — %s", act.Summary, act.Reason)
+	}
+	// With a backup defense to let go, it's a fine stash: this week's
+	// starter stays.
+	_, act := plan(false)
+	if act == nil {
+		t.Fatal("didn't stash the better defense over the backup")
+	}
+	if !strings.Contains(act.Summary, "drop DST Bench") || !strings.HasPrefix(act.Summary, "Stash") {
+		t.Errorf("bye-week claim: %s — %s", act.Summary, act.Reason)
+	}
+}
