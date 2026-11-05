@@ -336,8 +336,24 @@ func startable(roster []*espn.Player) []*espn.Player {
 	return out
 }
 
+// countsThisWeek is who a roster move can count on for this week's points.
+// A waiver claim usually clears before the weekend's games: the player it
+// drops is gone by then, and the claimed player can't be counted on until
+// next week. So neither counts this week. (The lineup itself is still set
+// with startable, since the dropped player is on the team until it clears.)
+func countsThisWeek(roster []*espn.Player) []*espn.Player {
+	out := make([]*espn.Player, 0, len(roster))
+	for _, p := range roster {
+		if p.Status != pendingClaim && p.Status != pendingDrop {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
 // Local-only statuses for waiver claims that haven't processed yet: the
-// claimed player can't start this week, and the player we'd drop still can.
+// claimed player can't start this week, and the player we'd drop is still
+// on the team, but only until the claim clears.
 const (
 	pendingClaim = "PENDING_CLAIM"
 	pendingDrop  = "PENDING_DROP"
@@ -398,7 +414,7 @@ func (s *state) teamValue(roster []*espn.Player, weekWeight float64) float64 {
 	if weekWeight > 0 {
 		// Roster moves are judged on expected points. Boom/bust upside only
 		// matters for who starts, which the lineup optimizer handles.
-		week = lineup.Optimize(s.l, startable(roster), s.weekScorer(0)).Total
+		week = lineup.Optimize(s.l, countsThisWeek(roster), s.weekScorer(0)).Total
 	}
 	future, irStash := s.futureRoster(roster)
 	perWeek, starts := s.futureLineups(future)

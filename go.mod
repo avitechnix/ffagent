@@ -2,7 +2,7 @@ module github.com/avitechnix/ffagent
 
 go 1.26.9
 
-toolchain go1.27.2
+toolchain go1.27.3
 
 require (
 	github.com/anthropics/anthropic-sdk-go v1.82.0

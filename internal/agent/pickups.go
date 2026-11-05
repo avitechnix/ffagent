@@ -109,7 +109,7 @@ const stashGainFactor = 2
 
 // weekTotal is this week's best lineup total for a roster.
 func (s *state) weekTotal(roster []*espn.Player) float64 {
-	return lineup.Optimize(s.l, startable(roster), s.weekScorer(0)).Total
+	return lineup.Optimize(s.l, countsThisWeek(roster), s.weekScorer(0)).Total
 }
 
 // byeCover names the weeks a pickup matters most because players at his
@@ -156,10 +156,10 @@ func (s *state) byeCover(before, after []*espn.Player, c *espn.Player) string {
 // skipped for a "next man up" whose teammate was just ruled out: ESPN is
 // slow to raise those, which is why the agent can beat others to them.
 func (s *state) projectsLower(c, d *espn.Player) bool {
-	if c.Status == pendingClaim {
-		return false // the dropped player stays until the claim clears, so this week is unchanged
-	}
 	cv, dv := s.val(c), s.val(d)
+	if c.Status == pendingClaim && !cv.OnBye {
+		return false // judged on value: the drop's lost week is already counted against it
+	}
 	const eps = 0.05
 	cWeek, cESPN := cv.WeekProjection, cv.ESPNWeekProjection
 	if c.Locked {
