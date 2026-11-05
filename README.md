@@ -97,7 +97,7 @@ sudo ./deploy/install.sh
 
 The installer:
 
-1. **Installs Go if needed.** It downloads Go 1.27.2 and checks it against a pinned
+1. **Installs Go if needed.** It downloads Go 1.27.3 and checks it against a pinned
    SHA-256.
 2. **Builds** the agent.
 3. **Creates a locked-down `ffagent` system user.**
@@ -312,7 +312,7 @@ go build -o ffagent ./cmd/ffagent
 ```
 
 This needs Go 1.26.9 or newer. With an older Go installed, the `go` command fetches the
-pinned, patched toolchain (`go1.27.2`) automatically. Don't override that with
+pinned, patched toolchain (`go1.27.3`) automatically. Don't override that with
 `GOTOOLCHAIN=local`: older Go releases have known vulnerabilities in `net/http`,
 `crypto/tls` and `crypto/x509`, which this agent relies on.
 
